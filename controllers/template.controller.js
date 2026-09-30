@@ -1581,6 +1581,8 @@ const metaTemplateToDbDocument = (metaTemplate, wabaId, userId) => {
     buttons: isCarousel ? [] : extractButtons(components),
     carousel_cards: isCarousel ? extractCarouselCards(components) : [],
     authentication_options: isAuth ? extractAuthenticationOptions(components) : undefined,
+    deleted_at: null,
+    deleted_by: null,
   };
 
   const callPermissionComp = components.find((c) => (c.type || "").toUpperCase() === "CALL_PERMISSION_REQUEST");

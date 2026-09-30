@@ -24,7 +24,7 @@ RAZORPAY_WEBHOOK_SECRET=
 # ==================================
 # Add your other existing environment variables here
 JWT_SECRET=your_jwt_secret_here
-MONGODB_URI=mongodb://administrator:Amipdxb#2026@127.0.0.1:27017/wapi?authSource=admin|g
+MONGODB_URI=mongodb://administrator:Amipdxb#2026@127.0.0.1:27017/wapi?authSource=admin
 REDIS_HOST=localhost
 REDIS_PORT=6379
 REDIS_PASSWORD=

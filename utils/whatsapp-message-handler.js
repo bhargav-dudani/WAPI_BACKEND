@@ -101,6 +101,12 @@ export function parseIncomingMessage(message) {
       console.log("content", content)
       break;
 
+    case "button":
+      content = message.button?.text || null;
+      interactiveId = message.button?.payload || null;
+      fileType = "button_reply";
+      break;
+
     case "reaction":
       reactionMessageId = message.reaction.message_id;
       reactionEmoji = message.reaction.emoji;
@@ -115,8 +121,15 @@ export function parseIncomingMessage(message) {
   let interactiveData = null;
   if (message.type === "interactive") {
     interactiveData = message.interactive;
+  } else if (message.type === "button") {
+    interactiveData = {
+      type: "button_reply",
+      button_reply: {
+        id: message.button?.payload || "",
+        title: message.button?.text || ""
+      }
+    };
   }
-
   return { content, mediaId, fileType, mimeType, interactiveId, interactiveData, replyMessageId, reactionMessageId, reactionEmoji };
 }
 

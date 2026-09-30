@@ -978,7 +978,7 @@ export const handleIncomingMessage = async (req, res, io = null) => {
     const messageDoc = await Message.create({
       sender_number: message.from,
       recipient_number: whatsappPhoneNumber.display_phone_number,
-      message_type: ['text', 'link', 'image', 'sticker', 'file', 'video', 'poll', 'form', 'system', 'call', 'document', 'audio', 'location', 'interactive', 'template', 'order', 'system_messages', 'reaction'].includes(message.type) ? message.type : 'system_messages',
+      message_type: message.type === 'button' ? 'interactive' : (['text', 'link', 'image', 'sticker', 'file', 'video', 'poll', 'form', 'system', 'call', 'document', 'audio', 'location', 'interactive', 'template', 'order', 'system_messages', 'reaction'].includes(message.type) ? message.type : 'system_messages'),
       content: content || (message.type === 'unsupported' ? 'Unsupported message type received' : null),
       wa_message_id: message.id,
       wa_media_id: mediaId,
@@ -1205,12 +1205,12 @@ export const handleIncomingMessage = async (req, res, io = null) => {
     const configId = metadata.automation_waiting_config_id;
     const bookingId = metadata.automation_current_booking_id;
 
-    if (message.type === 'interactive' && (waitingType || bookingId)) {
+    if ((message.type === 'interactive' || message.type === 'button') && (waitingType || bookingId)) {
       console.log(`[PIVOTAL] Entering Clinical Priority Handler: WaitingType=${waitingType}, BookingId=${bookingId}`);
       console.log(`[PIVOTAL] Metadata Dump: ${JSON.stringify(metadata)}`);
     }
 
-    if (waitingType === 'appointment_question' && message.type === 'text') {
+    if (waitingType === 'appointment_question' && (message.type === 'text' || message.type === 'interactive' || message.type === 'button')) {
       try {
         const inputData = JSON.parse(metadata.automation_input_data || "{}");
         const answers = inputData.appointment_answers || {};
@@ -1300,8 +1300,8 @@ export const handleIncomingMessage = async (req, res, io = null) => {
         console.error("[PIVOTAL] Error handling appointment list reply:", err);
       }
     }
-    else if (message.type === 'interactive' && message.interactive?.type === 'button_reply' && (waitingType === 'appointment_status_selection' || bookingId)) {
-      const buttonId = message.interactive.button_reply.id;
+    else if ((message.type === 'interactive' || message.type === 'button') && (message.interactive?.type === 'button_reply' || message.type === 'button') && (waitingType === 'appointment_status_selection' || bookingId)) {
+      const buttonId = message.interactive?.button_reply?.id || message.button?.payload || message.button?.text;
       if (buttonId.startsWith('status_')) {
         try {
           const { default: appointmentService } = await import('../services/appointment.service.js');
@@ -1543,7 +1543,7 @@ export const handleIncomingMessage = async (req, res, io = null) => {
 
     try {
       const automationMessage =
-        message.type === "interactive" && interactiveId
+        (message.type === "interactive" || message.type === "button") && interactiveId
           ? interactiveId
           : content;
 
@@ -1555,7 +1555,7 @@ export const handleIncomingMessage = async (req, res, io = null) => {
         form_data: formData,
         senderNumber: message.from,
         recipientNumber: whatsappPhoneNumber.display_phone_number,
-        messageType: message.type,
+        messageType: message.type === 'button' ? 'interactive' : message.type,
         userId: whatsappPhoneNumber.user_id.toString(),
         workspaceId: whatsappPhoneNumber.waba_id?.workspace_id?.toString(),
         whatsappPhoneNumberId: whatsappPhoneNumber._id.toString(),
