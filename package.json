@@ -6,11 +6,13 @@
   "scripts": {
     "start": "nodemon server.js",
     "migrate-whatsapp": "node utils/migrate-whatsapp-structure.js",
-    "seed": "node seeder/index.js"
+    "seed": "node seeder/index.js",
+    "seed:permissions": "node seeder/seedPermission.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1032.0",
     "@aws-sdk/lib-storage": "^3.1032.0",
+    "@mollie/api-client": "^3.7.0",
     "@roamhq/wrtc": "^0.10.0",
     "axios": "^1.13.6",
     "baileys-pro": "^0.0.5",
@@ -24,10 +26,7 @@
     "csv-writer": "^1.6.0",
     "debug": "~4.4.3",
     "dotenv": "^17.3.1",
-    "ejs-mate": "^4.0.0",
     "express": "^5.2.1",
-    "express-session": "^1.19.0",
-    "express-validator": "^7.3.1",
     "ffmpeg-static": "^5.3.0",
     "form-data": "^4.0.5",
     "googleapis": "^171.4.0",
@@ -41,6 +40,7 @@
     "node-cron": "^4.2.1",
     "nodemailer": "^8.0.2",
     "nodemon": "^3.1.14",
+    "oauth": "^0.10.2",
     "opusscript": "^0.1.1",
     "pdf-parse": "^2.4.5",
     "pdfkit": "^0.18.0",
@@ -55,5 +55,10 @@
     "twitter-api-v2": "^1.29.0",
     "undici": "^7.22.0",
     "uuid": "^13.0.0"
+  },
+  "overrides": {
+    "baileys-pro": {
+      "libsignal": "2.0.1"
+    }
   }
 }

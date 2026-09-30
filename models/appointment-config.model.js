@@ -16,7 +16,7 @@ const slotSchema = new mongoose.Schema({
 const customQuestionSchema = new mongoose.Schema({
   id: { type: String, required: true },
   label: { type: String, required: true },
-  type: { type: String, enum: ['text', 'number', 'select'], default: 'text' },
+  type: { type: String, enum: ['text', 'number', 'select', 'dropdown', 'email', 'phone', 'date', 'time'], default: 'text' },
   options: [String],
   required: { type: Boolean, default: false }
 }, { _id: false });
@@ -72,7 +72,7 @@ const appointmentConfigSchema = new mongoose.Schema({
 
   payment_gateway_id: { type: mongoose.Schema.Types.ObjectId, ref: 'PaymentGatewayConfig' },
   accept_partial_payment: { type: Boolean, default: false },
-  partial_payment_amount: { type: Number, default: 0 }, 
+  partial_payment_amount: { type: Number, default: 0 },
 
   send_payment_link_automatically: { type: Boolean, default: false },
   payment_link_template_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Template' },

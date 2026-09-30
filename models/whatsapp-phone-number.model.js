@@ -33,6 +33,26 @@ const whatsappPhoneSchema = new mongoose.Schema({
     type: String
   },
 
+  name_status: {
+    type: String,
+    default: null
+  },
+
+  code_verification_status: {
+    type: String,
+    default: null
+  },
+
+  status: {
+    type: String,
+    default: null
+  },
+
+  rejection_reason: {
+    type: String,
+    default: null
+  },
+
   is_active: {
     type: Boolean,
     default: true

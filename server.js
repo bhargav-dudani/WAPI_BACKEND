@@ -9,12 +9,14 @@ import automatedResponseWorker from './utils/automated-response-worker.js';
 import { fixSettingsData } from './utils/fix-settings-data.js';
 import { fixPlatformData } from './utils/fix-platform-data.js';
 import { setContactImportSocketIo } from './queues/contact-import-queue.js';
-import './utils/system-settings.js';
 import { getSequenceQueue } from './queues/sequence-queue.js';
 import statusCronService from './cronjob/status.cronService.js';
 import trialPeriodCronService from './cronjob/trialPeriod.cronService.js';
 import snoozeCronService from './cronjob/snooze.cronService.js';
 // import twitterPollCronService from './cronjob/twitter-poll.cronService.js'; // DISABLED: Twitter not working
+import scheduledPostsCronService from './cronjob/scheduled-posts.cronService.js';
+import whatsappStatusSyncCronService from './cronjob/whatsapp-status-sync.cronService.js';
+import { startCampaignRecoveryCron } from './cronjob/campaign-recovery.cronService.js';
 import EmailTemplateService from './services/email-template.service.js';
 
 async function loadStripeKeysFromSettings() {
@@ -75,8 +77,25 @@ import('./services/whatsapp/unified-whatsapp.service.js').then(module => {
 
 io.on('connection', (socket) => {
   console.log('WebSocket client connected:', socket.id);
+  const userId = socket.handshake.query?.userId || socket.handshake.auth?.userId;
+  if (userId) {
+    socket.join(`user_${userId}`);
+    socket.join(userId.toString());
+  }
+
+  socket.on('join_room', (room) => {
+    if (room) socket.join(room);
+  });
+
+  socket.on('join_user', (uId) => {
+    if (uId) {
+      socket.join(`user_${uId}`);
+      socket.join(uId.toString());
+    }
+  });
+
   socket.on('disconnect', () => {
- 
+    console.log('WebSocket client disconnected:', socket.id);
   });
 });
 
@@ -90,6 +109,9 @@ io.on('connection', (socket) => {
     await statusCronService();
     await trialPeriodCronService();
     await snoozeCronService(app);
+    await scheduledPostsCronService();
+    await whatsappStatusSyncCronService();
+    startCampaignRecoveryCron();
     // await twitterPollCronService(app); // DISABLED: Twitter not working
     await EmailTemplateService.init();
 

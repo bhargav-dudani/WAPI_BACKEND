@@ -1,6 +1,8 @@
 import { google } from 'googleapis';
 import { decrypt, encrypt } from './encryption-utils.js';
 import { GoogleAccount } from '../models/index.js';
+import mongoose from 'mongoose';
+import moment from 'moment';
 
 export const SCOPES = [
   'https://www.googleapis.com/auth/calendar',
@@ -24,9 +26,44 @@ export const getOAuth2Client = () => {
   );
 };
 
+export const parseToDate = (dateStr) => {
+  if (!dateStr) return new Date();
+  if (dateStr instanceof Date) return isNaN(dateStr.getTime()) ? new Date() : dateStr;
+
+  const parsed = moment(dateStr, [
+    moment.ISO_8601,
+    'YYYY-MM-DDTHH:mm:ss.SSSZ',
+    'YYYY-MM-DDTHH:mm:ssZ',
+    'YYYY-MM-DDTHH:mm',
+    'YYYY-MM-DD HH:mm:ss',
+    'YYYY-MM-DD HH:mm',
+    'DD-MM-YYYY HH:mm:ss',
+    'DD-MM-YYYY HH:mm',
+    'DD/MM/YYYY HH:mm:ss',
+    'DD/MM/YYYY HH:mm'
+  ]);
+
+  if (parsed.isValid()) {
+    return parsed.toDate();
+  }
+
+  const nativeDate = new Date(dateStr);
+  if (!isNaN(nativeDate.getTime())) {
+    return nativeDate;
+  }
+
+  return new Date();
+};
+
 
 export const getAuthenticatedClient = async (googleAccountId) => {
-  const account = await GoogleAccount.findById(googleAccountId);
+  let account;
+  if (mongoose.Types.ObjectId.isValid(googleAccountId)) {
+    account = await GoogleAccount.findById(googleAccountId);
+  } else {
+    account = await GoogleAccount.findOne({ email: googleAccountId, deleted_at: null });
+  }
+
   if (!account) {
     throw new Error('Google account not found');
   }
@@ -66,7 +103,7 @@ export const handleGoogleApiError = async (error, googleAccountId) => {
     (error.response?.data?.error === 'invalid_grant') ||
     (error.message && error.message.includes('invalid_grant'));
 
-  const isInsufficientScope = 
+  const isInsufficientScope =
     (error.response?.status === 403 && error.message?.includes('insufficient authentication scopes'));
   if (isInvalidGrant || isInsufficientScope) {
     try {
@@ -104,5 +141,6 @@ export default {
   getSheetsClient,
   getFormsClient,
   handleGoogleApiError,
+  parseToDate,
   SCOPES
 };

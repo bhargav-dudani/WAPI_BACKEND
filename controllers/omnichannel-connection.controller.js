@@ -7,7 +7,7 @@ import { fetchAllFacebookPages } from './facebook.controller.js';
 import axios from 'axios';
 import mongoose from 'mongoose';
 
-const FB_API_VERSION = 'v22.0';
+const FB_API_VERSION = process.env.WHATSAPP_API_VERSION || 'v22.0';
 
 export const connectChannel = async (req, res) => {
     try {
@@ -201,7 +201,7 @@ export const connectChannel = async (req, res) => {
 
             let igUser = { id: igUserId, name: `Instagram Account (ID: ${igUserId})`, username: igUserId };
             try {
-                const meResIg = await axios.get(`https://graph.instagram.com/v22.0/me`, {
+                const meResIg = await axios.get(`https://graph.instagram.com/${FB_API_VERSION}/me`, {
                     params: { access_token: longLivedToken, fields: 'id,username,name,account_type,user_id' }
                 });
                 if (meResIg.data) {

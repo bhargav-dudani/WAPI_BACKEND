@@ -19,6 +19,7 @@ import SocialAutomation from '../models/social-automation.model.js';
 import omnichannelService from '../services/messaging/omnichannel.service.js';
 
 const processedMids = new Set();
+const META_GRAPH_API_VERSION = process.env.WHATSAPP_API_VERSION || 'v22.0';
 setInterval(() => processedMids.clear(), 60000);
 
 
@@ -175,7 +176,7 @@ export const handleFacebookInstagramIncoming = async (req, res, io = null) => {
             for (const conn of activeIgConns) {
               if (conn.access_token && conn.access_token.startsWith('IGA')) {
                 try {
-                  const res = await axios.get(`https://graph.instagram.com/v22.0/${pageOrAccountId}?fields=id`, {
+                  const res = await axios.get(`https://graph.instagram.com/${META_GRAPH_API_VERSION}/${pageOrAccountId}?fields=id`, {
                     params: { access_token: conn.access_token }
                   });
                   if (res.data && res.data.id === conn.ig_user_id) {
@@ -257,13 +258,16 @@ export const handleFacebookInstagramIncoming = async (req, res, io = null) => {
             if (automation) {
               let isUserFollowing = true;
 
-              if (body.object === 'instagram' && pageAccessToken && pageAccessToken.startsWith('IGA')) {
+              if (body.object === 'instagram' && pageAccessToken) {
                 try {
-                  const checkFollowUrl = `https://graph.instagram.com/v22.0/${senderId}?fields=is_user_follow_business&access_token=${pageAccessToken}`;
+                  const baseUrl = pageAccessToken.startsWith('IGA') ? 'https://graph.instagram.com' : 'https://graph.facebook.com';
+                  const checkFollowUrl = `${baseUrl}/${META_GRAPH_API_VERSION}/${senderId}?fields=is_user_follow_business&access_token=${pageAccessToken}`;
                   const checkRes = await axios.get(checkFollowUrl);
-                  isUserFollowing = checkRes.data.is_user_follow_business;
+                  if (checkRes.data && checkRes.data.is_user_follow_business !== undefined) {
+                    isUserFollowing = Boolean(checkRes.data.is_user_follow_business);
+                  }
                 } catch (apiErr) {
-                  console.warn('[Facebook/Instagram Webhook] Could not verify IG follow status:', apiErr.message);
+                  console.warn('[Facebook/Instagram Webhook] Could not verify IG follow status:', apiErr?.response?.data || apiErr.message);
                 }
               }
 
@@ -427,7 +431,7 @@ export const handleFacebookInstagramIncoming = async (req, res, io = null) => {
           if (pageAccessToken) {
             try {
               if (eventPlatform === 'facebook') {
-                const convUrl = `https://graph.facebook.com/v22.0/${pageOrAccountId}/conversations?user_id=${senderId}&fields=participants&access_token=${pageAccessToken}`;
+                const convUrl = `https://graph.facebook.com/${META_GRAPH_API_VERSION}/${pageOrAccountId}/conversations?user_id=${senderId}&fields=participants&access_token=${pageAccessToken}`;
                 const convRes = await axios.get(convUrl);
                 const data = convRes.data.data;
                 if (data && data.length > 0) {
@@ -436,18 +440,18 @@ export const handleFacebookInstagramIncoming = async (req, res, io = null) => {
                   if (userParticipant && userParticipant.name) {
                     senderName = userParticipant.name;
                   } else {
-                    const profileUrl = `https://graph.facebook.com/v22.0/${senderId}?fields=first_name,last_name,name&access_token=${pageAccessToken}`;
+                    const profileUrl = `https://graph.facebook.com/${META_GRAPH_API_VERSION}/${senderId}?fields=first_name,last_name,name&access_token=${pageAccessToken}`;
                     const profileRes = await axios.get(profileUrl);
                     senderName = profileRes.data.name || `${profileRes.data.first_name || ''} ${profileRes.data.last_name || ''}`.trim() || 'Facebook User';
                   }
                 } else {
-                  const profileUrl = `https://graph.facebook.com/v22.0/${senderId}?fields=first_name,last_name,name&access_token=${pageAccessToken}`;
+                  const profileUrl = `https://graph.facebook.com/${META_GRAPH_API_VERSION}/${senderId}?fields=first_name,last_name,name&access_token=${pageAccessToken}`;
                   const profileRes = await axios.get(profileUrl);
                   senderName = profileRes.data.name || `${profileRes.data.first_name || ''} ${profileRes.data.last_name || ''}`.trim() || 'Facebook User';
                 }
               } else {
                 const baseUrl = pageAccessToken.startsWith('IGA') ? 'https://graph.instagram.com' : 'https://graph.facebook.com';
-                const profileUrl = `${baseUrl}/v22.0/${senderId}?fields=username,name&access_token=${pageAccessToken}`;
+                const profileUrl = `${baseUrl}/${META_GRAPH_API_VERSION}/${senderId}?fields=username,name&access_token=${pageAccessToken}`;
                 const profileRes = await axios.get(profileUrl);
                 senderName = profileRes.data.name || profileRes.data.username || 'Instagram User';
               }
@@ -476,7 +480,7 @@ export const handleFacebookInstagramIncoming = async (req, res, io = null) => {
           if (!updatedName && pageAccessToken) {
             try {
               if (eventPlatform === 'facebook') {
-                const convUrl = `https://graph.facebook.com/v22.0/${pageOrAccountId}/conversations?user_id=${senderId}&fields=participants&access_token=${pageAccessToken}`;
+                const convUrl = `https://graph.facebook.com/${META_GRAPH_API_VERSION}/${pageOrAccountId}/conversations?user_id=${senderId}&fields=participants&access_token=${pageAccessToken}`;
                 const convRes = await axios.get(convUrl);
                 const data = convRes.data.data;
                 if (data && data.length > 0) {
@@ -485,18 +489,18 @@ export const handleFacebookInstagramIncoming = async (req, res, io = null) => {
                   if (userParticipant && userParticipant.name) {
                     updatedName = userParticipant.name;
                   } else {
-                    const profileUrl = `https://graph.facebook.com/v22.0/${senderId}?fields=first_name,last_name,name&access_token=${pageAccessToken}`;
+                    const profileUrl = `https://graph.facebook.com/${META_GRAPH_API_VERSION}/${senderId}?fields=first_name,last_name,name&access_token=${pageAccessToken}`;
                     const profileRes = await axios.get(profileUrl);
                     updatedName = profileRes.data.name || `${profileRes.data.first_name || ''} ${profileRes.data.last_name || ''}`.trim() || null;
                   }
                 } else {
-                  const profileUrl = `https://graph.facebook.com/v22.0/${senderId}?fields=first_name,last_name,name&access_token=${pageAccessToken}`;
+                  const profileUrl = `https://graph.facebook.com/${META_GRAPH_API_VERSION}/${senderId}?fields=first_name,last_name,name&access_token=${pageAccessToken}`;
                   const profileRes = await axios.get(profileUrl);
                   updatedName = profileRes.data.name || `${profileRes.data.first_name || ''} ${profileRes.data.last_name || ''}`.trim() || null;
                 }
               } else {
                 const baseUrl = pageAccessToken.startsWith('IGA') ? 'https://graph.instagram.com' : 'https://graph.facebook.com';
-                const profileUrl = `${baseUrl}/v22.0/${senderId}?fields=username,name&access_token=${pageAccessToken}`;
+                const profileUrl = `${baseUrl}/${META_GRAPH_API_VERSION}/${senderId}?fields=username,name&access_token=${pageAccessToken}`;
                 const profileRes = await axios.get(profileUrl);
                 updatedName = profileRes.data.name || profileRes.data.username || null;
               }
@@ -761,44 +765,44 @@ export const handleFacebookInstagramIncoming = async (req, res, io = null) => {
                 await db.ChatAssignment.findByIdAndUpdate(chatAssignment._id, { chatbot_id: null, chatbot_expires_at: null });
               }
             } else if (contactDoc.assigned_chatbot && !contactDoc.chatbot_paused) {
-                assignedChatbotId = contactDoc.assigned_chatbot;
+              assignedChatbotId = contactDoc.assigned_chatbot;
             }
 
             if (assignedChatbotId) {
-                let finalContent = content;
+              let finalContent = content;
 
-                if (messageType === 'audio' && fileUrl) {
-                    const { default: Chatbot } = await import('../models/chatbot.model.js');
-                    const chatbot = await Chatbot.findById(assignedChatbotId).populate('ai_model').lean();
-                    if (chatbot && chatbot.voice_settings && chatbot.voice_settings.enabled) {
-                        const { transcribeAudio } = await import('../utils/voice-ai.service.js');
-                        console.log(`[Facebook/Instagram Webhook] Transcribing incoming audio message...`);
-                        try {
-                            const transcript = await transcribeAudio(fileUrl, chatbot.api_key, chatbot.ai_model);
-                            if (transcript) {
-                                finalContent = transcript;
-                                console.log('[Facebook/Instagram Webhook] Transcription successful:', transcript);
-                            }
-                        } catch (err) {
-                            console.error('[Facebook/Instagram Webhook] Transcription failed:', err.message);
-                        }
+              if (messageType === 'audio' && fileUrl) {
+                const { default: Chatbot } = await import('../models/chatbot.model.js');
+                const chatbot = await Chatbot.findById(assignedChatbotId).populate('ai_model').lean();
+                if (chatbot && chatbot.voice_settings && chatbot.voice_settings.enabled) {
+                  const { transcribeAudio } = await import('../utils/voice-ai.service.js');
+                  console.log(`[Facebook/Instagram Webhook] Transcribing incoming audio message...`);
+                  try {
+                    const transcript = await transcribeAudio(fileUrl, chatbot.api_key, chatbot.ai_model);
+                    if (transcript) {
+                      finalContent = transcript;
+                      console.log('[Facebook/Instagram Webhook] Transcription successful:', transcript);
                     }
+                  } catch (err) {
+                    console.error('[Facebook/Instagram Webhook] Transcription failed:', err.message);
+                  }
                 }
+              }
 
-                if (finalContent) {
-                    console.log(`[Facebook/Instagram Webhook] Forwarding message to assigned chatbot ${assignedChatbotId}`);
-                    await sendAutomatedReply({
-                      wabaId: null,
-                      contactId: contactDoc._id,
-                      replyType: 'chatbot',
-                      replyId: assignedChatbotId,
-                      senderNumber: senderId,
-                      incomingText: finalContent,
-                      userId: userId,
-                      whatsappPhoneNumberId: null
-                    });
-                    automatedHandled = true;
-                }
+              if (finalContent) {
+                console.log(`[Facebook/Instagram Webhook] Forwarding message to assigned chatbot ${assignedChatbotId}`);
+                await sendAutomatedReply({
+                  wabaId: null,
+                  contactId: contactDoc._id,
+                  replyType: 'chatbot',
+                  replyId: assignedChatbotId,
+                  senderNumber: senderId,
+                  incomingText: finalContent,
+                  userId: userId,
+                  whatsappPhoneNumberId: null
+                });
+                automatedHandled = true;
+              }
             }
           }
           if (!automatedHandled) {
@@ -864,6 +868,25 @@ export const handleIncomingMessage = async (req, res, io = null) => {
     }
 
     const message = value.messages[0];
+
+    if (message.id && processedMids.has(message.id)) {
+      console.log(`[Webhook] Skipping duplicate WhatsApp webhook (Set cache hit) for message ID: ${message.id}`);
+      return res.sendStatus(200);
+    }
+
+    const existingMsg = await Message.findOne({ wa_message_id: message.id }).lean();
+    if (existingMsg) {
+      console.log(`[Webhook] Skipping duplicate WhatsApp webhook (DB hit) for message ID: ${message.id}`);
+      if (message.id) {
+        processedMids.add(message.id);
+      }
+      return res.sendStatus(200);
+    }
+
+    if (message.id) {
+      processedMids.add(message.id);
+    }
+
     const phoneNumberId = value.metadata.phone_number_id;
 
     const whatsappPhoneNumber = await WhatsappPhoneNumber.findOne({
@@ -912,7 +935,7 @@ export const handleIncomingMessage = async (req, res, io = null) => {
     const contact = await import('../models/index.js');
     const Contact = contact.Contact;
     const senderContact = value?.contacts?.find(c => c.wa_id === message.from) || value?.contacts?.[0];
-    console.log("senderContact?.profile" , senderContact?.profile);
+    console.log("senderContact?.profile", senderContact?.profile);
     const waName = senderContact?.profile?.name || message.from;
     const waUsername = senderContact?.profile?.username || senderContact?.username || null;
     const waBsuid = senderContact?.user_id || null;
@@ -933,6 +956,7 @@ export const handleIncomingMessage = async (req, res, io = null) => {
         source: 'whatsapp',
         user_id: whatsappPhoneNumber.user_id,
         created_by: whatsappPhoneNumber.user_id,
+        workspace_id: whatsappPhoneNumber.waba_id?.workspace_id || null,
         status: 'lead',
         deleted_at: null
       };
@@ -951,6 +975,10 @@ export const handleIncomingMessage = async (req, res, io = null) => {
       contactDoc = await Contact.create(contactFields);
     } else {
       let needsSave = false;
+      if (!contactDoc.workspace_id && whatsappPhoneNumber.waba_id?.workspace_id) {
+        contactDoc.workspace_id = whatsappPhoneNumber.waba_id.workspace_id;
+        needsSave = true;
+      }
       if (waUsername && contactDoc.whatsapp_username !== waUsername) {
         contactDoc.whatsapp_username = waUsername;
         needsSave = true;
@@ -994,7 +1022,10 @@ export const handleIncomingMessage = async (req, res, io = null) => {
       provider: 'business_api',
       reply_message_id: replyMessageId,
       reaction_message_id: reactionMessageId,
-      reaction_emoji: reactionEmoji
+      reaction_emoji: reactionEmoji,
+      whatsapp_phone_number_id: whatsappPhoneNumber._id,
+      whatsapp_connection_id: whatsappPhoneNumber.waba_id?._id || whatsappPhoneNumber.waba_id || null,
+      workspace_id: whatsappPhoneNumber.waba_id?.workspace_id || null
     });
 
     if (content && typeof content === 'string') {
@@ -1217,7 +1248,144 @@ export const handleIncomingMessage = async (req, res, io = null) => {
         const questionId = metadata.automation_current_question_id;
 
         if (questionId) {
-          answers[questionId] = content;
+          let answerVal = content;
+          if (message.type === 'interactive' && message.interactive) {
+            const rep = message.interactive.button_reply || message.interactive.list_reply;
+            if (rep && rep.id) {
+              answerVal = rep.id;
+            }
+          } else if (message.type === 'button' && message.button) {
+            if (message.button.payload) {
+              answerVal = message.button.payload;
+            }
+          }
+
+          const config = await AppointmentConfig.findById(configId).lean();
+          if (!config) throw new Error('Appointment configuration not found');
+
+          const questions = config.series_of_questions || [];
+          const currentQuestion = questions.find(q => (q.id || q.label) === questionId);
+
+          let isValid = true;
+          let errorMessage = "";
+
+          if (currentQuestion) {
+            const type = (currentQuestion.type || '').toLowerCase();
+            const required = currentQuestion.required;
+            const options = currentQuestion.options || [];
+            const textVal = (answerVal || '').trim();
+
+            if (required && !textVal) {
+              isValid = false;
+              errorMessage = `The field "${currentQuestion.label}" is required. Please provide a valid response.`;
+            } else if (textVal) {
+              if (type === 'number') {
+                if (isNaN(Number(textVal))) {
+                  isValid = false;
+                  errorMessage = `Invalid number. Please enter a valid numeric value for: ${currentQuestion.label}`;
+                }
+              } else if (type === 'email') {
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(textVal)) {
+                  isValid = false;
+                  errorMessage = `Invalid email address. Please enter a valid email (e.g., name@example.com).`;
+                }
+              } else if (type === 'phone') {
+                const phoneRegex = /^\+?[0-9\s\-()]{7,15}$/;
+                if (!phoneRegex.test(textVal)) {
+                  isValid = false;
+                  errorMessage = `Invalid phone number. Please enter a valid phone number.`;
+                }
+              } else if (type === 'select' || type === 'dropdown') {
+                if (options.length > 0) {
+                  const matchedOption = options.find(opt => opt.trim().toLowerCase() === textVal.toLowerCase());
+                  if (!matchedOption) {
+                    isValid = false;
+                    errorMessage = `Please select one of the allowed options:\n${options.map(opt => `- ${opt}`).join('\n')}`;
+                  } else {
+                    answerVal = matchedOption;
+                  }
+                }
+              } else if (type === 'date') {
+                const { default: moment } = await import('moment');
+                const parsedDate = moment(textVal, ['YYYY-MM-DD', 'MM-DD-YYYY', 'DD-MM-YYYY', 'MM/DD/YYYY', 'DD/MM/YYYY'], true);
+                if (!parsedDate.isValid()) {
+                  isValid = false;
+                  errorMessage = `Invalid date format. Please enter a valid date (e.g., YYYY-MM-DD).`;
+                }
+              } else if (type === 'time') {
+                const { default: moment } = await import('moment');
+                const parsedTime = moment(textVal, ['HH:mm', 'hh:mm A', 'hh:mm a', 'H:mm', 'h:mm A', 'h:mm a'], true);
+                if (!parsedTime.isValid()) {
+                  isValid = false;
+                  errorMessage = `Invalid time format. Please enter a valid time (e.g., HH:mm or HH:mm AM/PM).`;
+                }
+              }
+            }
+          }
+
+          if (!isValid) {
+            const { default: unifiedWhatsAppService } = await import('../services/whatsapp/unified-whatsapp.service.js');
+            await unifiedWhatsAppService.sendMessage(whatsappPhoneNumber.user_id, {
+              recipientNumber: contactDoc.phone_number,
+              messageType: 'text',
+              messageText: errorMessage,
+              whatsappPhoneNumberId: whatsappPhoneNumber._id
+            });
+
+            // Re-send the question
+            const questionText = currentQuestion.label;
+            const options = currentQuestion.options || [];
+            const qType = (currentQuestion.type || '').toLowerCase();
+
+            if ((qType === 'select' || qType === 'dropdown') && options.length > 0) {
+              if (options.length <= 3) {
+                const buttonParams = options.map((opt, i) => ({
+                  id: opt,
+                  title: opt.length > 20 ? opt.substring(0, 17) + '...' : opt
+                }));
+                await unifiedWhatsAppService.sendMessage(whatsappPhoneNumber.user_id, {
+                  recipientNumber: contactDoc.phone_number,
+                  messageType: 'interactive',
+                  interactiveType: 'button',
+                  messageText: questionText,
+                  buttonParams,
+                  whatsappPhoneNumberId: whatsappPhoneNumber._id
+                });
+              } else {
+                const items = options.slice(0, 10).map((opt, i) => ({
+                  id: opt,
+                  title: opt.length > 24 ? opt.substring(0, 21) + '...' : opt,
+                  description: ''
+                }));
+                await unifiedWhatsAppService.sendMessage(whatsappPhoneNumber.user_id, {
+                  recipientNumber: contactDoc.phone_number,
+                  messageType: 'interactive',
+                  interactiveType: 'list',
+                  messageText: questionText,
+                  listParams: {
+                    header: currentQuestion.label,
+                    buttonTitle: 'Select Option',
+                    sectionTitle: 'Options',
+                    items
+                  },
+                  whatsappPhoneNumberId: whatsappPhoneNumber._id
+                });
+              }
+            } else {
+              await unifiedWhatsAppService.sendMessage(whatsappPhoneNumber.user_id, {
+                recipientNumber: contactDoc.phone_number,
+                messageType: 'text',
+                messageText: questionText,
+                whatsappPhoneNumberId: whatsappPhoneNumber._id
+              });
+            }
+
+            return res.sendStatus(200);
+          }
+
+          // Validation passed
+          answers[questionId] = answerVal;
           inputData.appointment_answers = answers;
 
           contactDoc.metadata.automation_waiting_type = null;
@@ -1363,7 +1531,7 @@ export const handleIncomingMessage = async (req, res, io = null) => {
           const submission = await metaFlowService.handleFlowSubmission(message, whatsappPhoneNumber, contactDoc);
           if (submission?._id) {
             messageDoc.submission_id = submission._id;
-            formData = submission.data; 
+            formData = submission.data;
             await messageDoc.save();
             console.log(`[Webhook] Linked submission ${submission._id} to message ${messageDoc._id}`);
           }
@@ -1574,6 +1742,11 @@ export const handleIncomingMessage = async (req, res, io = null) => {
       const wabaId = whatsappPhoneNumber.waba_id._id || whatsappPhoneNumber.waba_id;
       const config = await WabaConfiguration.findOne({ waba_id: wabaId });
 
+      const latestContact = await Contact.findById(contactDoc._id);
+      if (latestContact) {
+        contactDoc = latestContact;
+      }
+
       contactDoc.last_incoming_message_at = new Date();
       contactDoc.snooze_count = 0;
       contactDoc.is_snoozed = false;
@@ -1600,38 +1773,38 @@ export const handleIncomingMessage = async (req, res, io = null) => {
           await db.ChatAssignment.findByIdAndUpdate(chatAssignment._id, { chatbot_id: null, chatbot_expires_at: null });
         }
       } else if (contactDoc.assigned_chatbot && !contactDoc.chatbot_paused) {
-          assignedChatbotId = contactDoc.assigned_chatbot;
+        assignedChatbotId = contactDoc.assigned_chatbot;
       }
 
       let finalContent = content;
 
       if (message.type === 'audio' && storedPath && assignedChatbotId) {
-          const { default: Chatbot } = await import('../models/chatbot.model.js');
-          const chatbot = await Chatbot.findById(assignedChatbotId).populate('ai_model').lean();
-          if (chatbot && chatbot.voice_settings && chatbot.voice_settings.enabled) {
-              const { transcribeAudio } = await import('../utils/voice-ai.service.js');
-              console.log(`[Webhook] Transcribing incoming WhatsApp audio message...`);
-              const transcript = await transcribeAudio(storedPath, chatbot.api_key, chatbot.ai_model);
-              if (transcript) {
-                  finalContent = transcript;
-                  console.log('[Webhook] Transcription successful:', transcript);
-              }
+        const { default: Chatbot } = await import('../models/chatbot.model.js');
+        const chatbot = await Chatbot.findById(assignedChatbotId).populate('ai_model').lean();
+        if (chatbot && chatbot.voice_settings && chatbot.voice_settings.enabled) {
+          const { transcribeAudio } = await import('../utils/voice-ai.service.js');
+          console.log(`[Webhook] Transcribing incoming WhatsApp audio message...`);
+          const transcript = await transcribeAudio(storedPath, chatbot.api_key, chatbot.ai_model);
+          if (transcript) {
+            finalContent = transcript;
+            console.log('[Webhook] Transcription successful:', transcript);
           }
+        }
       }
 
       if (assignedChatbotId && finalContent) {
-          console.log(`[Webhook] Forwarding message to assigned chatbot ${assignedChatbotId}`);
-          await sendAutomatedReply({
-            wabaId,
-            contactId: contactDoc._id,
-            replyType: 'chatbot',
-            replyId: assignedChatbotId,
-            senderNumber: message.from,
-            incomingText: finalContent,
-            userId: whatsappPhoneNumber.user_id,
-            whatsappPhoneNumberId: whatsappPhoneNumber._id
-          });
-          automatedHandled = true;
+        console.log(`[Webhook] Forwarding message to assigned chatbot ${assignedChatbotId}`);
+        await sendAutomatedReply({
+          wabaId,
+          contactId: contactDoc._id,
+          replyType: 'chatbot',
+          replyId: assignedChatbotId,
+          senderNumber: message.from,
+          incomingText: finalContent,
+          userId: whatsappPhoneNumber.user_id,
+          whatsappPhoneNumberId: whatsappPhoneNumber._id
+        });
+        automatedHandled = true;
       }
 
       if (!automatedHandled) {

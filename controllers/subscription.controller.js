@@ -1,10 +1,12 @@
-import { Subscription, AiPromptLog, Plan, PaymentHistory, User, Tag, Contact, QuickReply, Template, Campaign, CustomField, AutomationFlow, Team, Setting, Message, Form, WhatsappCallAgent, MessageBot, AppointmentBooking, KanbanFunnel, FacebookAdCampaign, Segment, Workspace, FacebookLead, GoogleAccount, Attachment } from '../models/index.js';
+import { Subscription, Webhook, AiPromptLog, Plan, PaymentHistory, User, Tag, Contact, QuickReply, Template, Campaign, CustomField, AutomationFlow, Team, Setting, Message, Form, WhatsappCallAgent, MessageBot, AppointmentBooking, KanbanFunnel, FacebookAdCampaign, Segment, Workspace, FacebookLead, GoogleAccount, Attachment } from '../models/index.js';
 import mongoose from 'mongoose';
 import {
     StripeService,
     RazorpayService,
     PayPalService,
-    calculatePeriodEnd
+    calculatePeriodEnd,
+    midtrans,
+    mollie
 } from '../utils/payment-gateway.service.js';
 import { generateInvoiceNumber } from '../utils/invoice-helper.js';
 import { getExchangeRate, formatAmount } from '../utils/currency.service.js';
@@ -423,6 +425,196 @@ export const getAllSubscriptions = async (req, res) => {
     }
 };
 
+export const createMollieSubscription = async (req, res) => {
+    try {
+        const { plan_id } = req.body;
+        const userId = req.user._id;
+
+        if (!plan_id || !mongoose.Types.ObjectId.isValid(plan_id)) {
+            return res.status(400).json({ success: false, message: 'Valid plan ID is required' });
+        }
+
+        const plan = await Plan.findOne({ _id: plan_id, is_active: true, deleted_at: null }).populate('currency');
+        if (!plan) {
+            return res.status(404).json({ success: false, message: 'Plan not found or inactive' });
+        }
+
+        const existingActive = await Subscription.findOne({
+            user_id: userId,
+            status: { $in: ['active', 'trial'] },
+            deleted_at: null
+        });
+        if (existingActive) {
+            return res.status(409).json({ success: false, message: 'User already has an active subscription' });
+        }
+
+        const redirectUrl = `${process.env.FRONTEND_URL || process.env.APP_URL || req.protocol + '://' + req.get('host')}/billing_plans`;
+        const webhookUrl = `${process.env.APP_URL || req.protocol + '://' + req.get('host')}/api/webhook/mollie`;
+
+        const customer = await mollie.createOrGetCustomer(req.user);
+
+        const linkResult = await mollie.createPaymentLink(
+            plan.price,
+            (plan.currency?.code || plan.currency || 'EUR').toString().toUpperCase(),
+            plan,
+            req.user,
+            webhookUrl,
+            redirectUrl,
+            customer.id
+        );
+
+        const now = new Date();
+        const periodEnd = calculatePeriodEnd(now, plan.billing_cycle);
+
+        let subscription = await Subscription.findOne({
+            user_id: userId,
+            plan_id: plan._id,
+            status: 'pending',
+            payment_gateway: 'mollie',
+            deleted_at: null
+        });
+
+        if (subscription) {
+            subscription.transaction_id = linkResult.id;
+            subscription.mollie_customer_id = customer.id;
+            subscription.current_period_end = periodEnd;
+            await subscription.save();
+        } else {
+            subscription = await Subscription.create({
+                user_id: userId,
+                plan_id: plan._id,
+                status: 'pending',
+                started_at: now,
+                current_period_start: now,
+                current_period_end: periodEnd,
+                payment_gateway: 'mollie',
+                payment_method: 'card',
+                payment_status: 'pending',
+                currency: (plan.currency?.code || plan.currency || 'EUR').toString().toUpperCase(),
+                transaction_id: linkResult.id,
+                mollie_customer_id: customer.id,
+                taxes: plan.taxes || [],
+                features: plan.features,
+                enabled_features: plan.enabled_features,
+                auto_renew: true
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                subscription_id: subscription._id,
+                payment_link: linkResult.url,
+                transaction_id: linkResult.id
+            }
+        });
+
+    } catch (error) {
+        console.error('Error creating Mollie subscription:', error);
+        return res.status(500).json({ success: false, message: 'Failed to create Mollie subscription', error: error.message });
+    }
+};
+
+export const createMidtransSubscription = async (req, res) => {
+    try {
+        const { plan_id } = req.body;
+        const userId = req.user._id;
+
+        if (!plan_id || !mongoose.Types.ObjectId.isValid(plan_id)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Valid plan ID is required'
+            });
+        }
+
+        const plan = await Plan.findOne({ _id: plan_id, is_active: true, deleted_at: null }).populate('currency');
+        if (!plan) {
+            return res.status(404).json({
+                success: false,
+                message: 'Plan not found or inactive'
+            });
+        }
+
+        const existingActive = await Subscription.findOne({
+            user_id: userId,
+            status: { $in: ['active', 'trial'] },
+            deleted_at: null
+        });
+        if (existingActive) {
+            return res.status(409).json({
+                success: false,
+                message: 'User already has an active subscription'
+            });
+        }
+
+        const returnUrl = `${process.env.FRONTEND_URL || process.env.APP_URL || req.protocol + '://' + req.get('host')}/billing_plans`;
+        const cancelUrl = `${process.env.FRONTEND_URL || process.env.APP_URL || req.protocol + '://' + req.get('host')}/billing_plans`;
+
+        const linkResult = await midtrans.createPaymentLink(
+            plan,
+            userId,
+            req.user?.email || 'test@example.com',
+            req.user?.phone || '08123456789',
+            returnUrl,
+            cancelUrl
+        );
+
+        const now = new Date();
+        const periodEnd = calculatePeriodEnd(now, plan.billing_cycle);
+
+        let subscription = await Subscription.findOne({
+            user_id: userId,
+            plan_id: plan._id,
+            status: 'pending',
+            payment_gateway: 'midtrans',
+            deleted_at: null
+        });
+
+        if (subscription) {
+            subscription.transaction_id = linkResult.id;
+            subscription.current_period_end = periodEnd;
+            subscription.metadata = { ...subscription.metadata, payment_link: linkResult.payment_link };
+            await subscription.save();
+        } else {
+            subscription = await Subscription.create({
+                user_id: userId,
+                plan_id: plan._id,
+                status: 'pending',
+                started_at: now,
+                current_period_start: now,
+                current_period_end: periodEnd,
+                payment_gateway: 'midtrans',
+                payment_method: 'card',
+                payment_status: 'pending',
+                currency: (plan.currency?.code || plan.currency || 'IDR').toString().toUpperCase(),
+                transaction_id: linkResult.id,
+                taxes: plan.taxes || [],
+                features: plan.features,
+                enabled_features: plan.enabled_features,
+                auto_renew: true,
+                metadata: { payment_link: linkResult.payment_link }
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: 'Redirect user to the Midtrans Snap payment link',
+            data: {
+                subscription,
+                payment_link: linkResult.payment_link,
+                plan_id: plan._id,
+                plan_name: plan.name
+            }
+        });
+    } catch (error) {
+        console.error('Error creating Midtrans subscription:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to create subscription',
+            error: error.message
+        });
+    }
+};
 
 export const getPendingManualSubscriptions = async (req, res) => {
     try {
@@ -480,6 +672,22 @@ export const approveManualSubscription = async (req, res) => {
                 message: 'Pending manual subscription not found'
             });
         }
+
+        await Subscription.updateMany(
+            {
+                user_id: subscription.user_id,
+                _id: { $ne: subscription._id },
+                status: { $in: ['active', 'trial'] },
+                deleted_at: null
+            },
+            {
+                $set: {
+                    status: 'canceled',
+                    cancelled_at: new Date(),
+                    auto_renew: false
+                }
+            }
+        );
 
         subscription.status = 'active';
         subscription.payment_status = 'paid';
@@ -569,7 +777,7 @@ export const rejectManualSubscription = async (req, res) => {
 const PLAN_SENSITIVE_FIELDS = '-stripe_price_id -stripe_product_id -stripe_payment_link_id -stripe_payment_link_url -razorpay_plan_id';
 
 const fetchDynamicUsage = async (userId) => {
-    const [tagsCount, contactsCount, templatesCount, campaignsCount, customFieldsCount, staffCount, botFlowsCount, aiPromptCount, messagesCount, teamsCount, formsCount, whatsapp_callingCount, messageBotsCount, appointmentBookingsCount, userResult, kanbanFunnelCount, facebookAdCampaignCount, segmentCount, workspaceCount, facebookLeadCount, googleAccountCount, quickReplyCount, fileSizes] = await Promise.all([
+    const [tagsCount, contactsCount, templatesCount, campaignsCount, customFieldsCount, staffCount, botFlowsCount, aiPromptCount, messagesCount, teamsCount, formsCount, whatsapp_callingCount, messageBotsCount, appointmentBookingsCount, userResult, kanbanFunnelCount, facebookAdCampaignCount, segmentCount, workspaceCount, facebookLeadCount, googleAccountCount, quickReplyCount, webhookCount, fileSizes] = await Promise.all([
         Tag.countDocuments({ created_by: userId, deleted_at: null }),
         Contact.countDocuments({ user_id: userId, deleted_at: null }),
         Template.countDocuments({ user_id: userId }),
@@ -592,6 +800,7 @@ const fetchDynamicUsage = async (userId) => {
         FacebookLead.countDocuments({ user_id: userId, deleted_at: null }),
         GoogleAccount.countDocuments({ user_id: userId, deleted_at: null }),
         QuickReply.countDocuments({ user_id: userId, deleted_at: null }),
+        Webhook.countDocuments({ user_id: userId }),
         Attachment.aggregate([
             { $match: { createdBy: new mongoose.Types.ObjectId(userId) } },
             {
@@ -649,6 +858,9 @@ const fetchDynamicUsage = async (userId) => {
         facebook_lead_used: facebookLeadCount,
         google_account_used: googleAccountCount,
         quick_replies_used: quickReplyCount,
+        whatsapp_webhook: webhookCount,
+        webhooks_used: webhookCount,
+        whatsapp_webhook_used: webhookCount,
         document_file_limit_used: documentUsedMB,
         audio_file_limit_used: audioUsedMB,
         video_file_limit_used: videoUsedMB,
@@ -659,15 +871,12 @@ const fetchDynamicUsage = async (userId) => {
 
 export const getUserSubscription = async (req, res) => {
     try {
-        const userId = req.user._id;
+        const userId = req.user.owner_id;
 
-        const subscription = await Subscription.findOne({
+        let subscription = await Subscription.findOne({
             user_id: userId,
             deleted_at: null,
-            $or: [
-                { status: { $in: ['active', 'trial'] } },
-                { payment_gateway: 'manual', status: 'pending' }
-            ]
+            status: { $in: ['active', 'trial'] }
         })
             .populate({
                 path: 'plan_id',
@@ -678,7 +887,44 @@ export const getUserSubscription = async (req, res) => {
                 }
             }).sort({ created_at: -1 }).lean();
 
+        const pendingSubscription = await Subscription.findOne({
+            user_id: userId,
+            deleted_at: null,
+            status: 'pending'
+        })
+            .populate({
+                path: 'plan_id',
+                select: '_id name price billing_cycle features enabled_features is_featured',
+                ...PLAN_SENSITIVE_FIELDS,
+                populate: {
+                    path: 'currency taxes',
+                }
+            }).sort({ created_at: -1 }).lean();
+
+        const setting = await Setting.findOne().select('storage_limit razorpay_key_id').lean();
+        const storageLimit = setting?.storage_limit || 0;
+        const razorpay_key_id = setting?.razorpay_key_id || process.env.RAZORPAY_KEY_ID;
+
+        const enrichedPendingRequest = pendingSubscription ? {
+            ...pendingSubscription,
+            razorpay_key_id
+        } : null;
+
         if (!subscription) {
+            if (pendingSubscription) {
+                const usage = await fetchDynamicUsage(userId);
+                return res.status(200).json({
+                    success: true,
+                    data: {
+                        ...enrichedPendingRequest,
+                        features: {},
+                        enabled_features: {},
+                        usage,
+                        pending_request: enrichedPendingRequest
+                    },
+                    message: 'Subscription request pending admin approval'
+                });
+            }
             return res.status(200).json({
                 success: true,
                 data: [],
@@ -688,8 +934,6 @@ export const getUserSubscription = async (req, res) => {
 
         const usage = await fetchDynamicUsage(userId);
 
-        const setting = await Setting.findOne().select('storage_limit').lean();
-        const storageLimit = setting?.storage_limit || 0;
         let effectiveFeatures = {};
         if (subscription.features && Object.keys(subscription.features).length > 0) {
             effectiveFeatures = { ...(subscription.plan_id?.features || {}), ...subscription.features };
@@ -708,7 +952,11 @@ export const getUserSubscription = async (req, res) => {
         subscription.features = effectiveFeatures;
         subscription.enabled_features = effectiveEnabledFeatures;
 
-        const data = { ...subscription, usage };
+        const data = {
+            ...subscription,
+            usage,
+            pending_request: enrichedPendingRequest
+        };
 
         return res.status(200).json({
             success: true,
@@ -763,6 +1011,14 @@ export const createStripeSubscription = async (req, res) => {
             });
         }
 
+        const separator = plan.stripe_payment_link_url.includes('?') ? '&' : '?';
+        const params = new URLSearchParams();
+        params.set('client_reference_id', userId.toString());
+        if (req.user?.email) {
+            params.set('prefilled_email', req.user.email);
+        }
+        const paymentLink = `${plan.stripe_payment_link_url}${separator}${params.toString()}`;
+
         let subscription = await Subscription.findOne({
             user_id: userId,
             plan_id: plan._id,
@@ -772,7 +1028,10 @@ export const createStripeSubscription = async (req, res) => {
             deleted_at: null
         });
 
-        if (!subscription) {
+        if (subscription) {
+            subscription.metadata = { ...subscription.metadata, payment_link: paymentLink };
+            await subscription.save();
+        } else {
             const now = new Date();
             const isLifetime = plan.billing_cycle === 'lifetime';
             const periodEnd = calculatePeriodEnd(now, plan.billing_cycle || 'monthly');
@@ -791,17 +1050,10 @@ export const createStripeSubscription = async (req, res) => {
                 taxes: plan.taxes || [],
                 features: plan.features,
                 auto_renew: !isLifetime,
-                enabled_features: plan.enabled_features
+                enabled_features: plan.enabled_features,
+                metadata: { payment_link: paymentLink }
             });
         }
-
-        const separator = plan.stripe_payment_link_url.includes('?') ? '&' : '?';
-        const params = new URLSearchParams();
-        params.set('client_reference_id', userId.toString());
-        if (req.user?.email) {
-            params.set('prefilled_email', req.user.email);
-        }
-        const paymentLink = `${plan.stripe_payment_link_url}${separator}${params.toString()}`;
 
         return res.status(200).json({
             success: true,
@@ -991,6 +1243,7 @@ export const createRazorpaySubscription = async (req, res) => {
         if (subscription) {
             subscription.razorpay_subscription_id = linkResult.id;
             subscription.current_period_end = periodEnd;
+            subscription.metadata = { ...subscription.metadata, payment_link: linkResult.short_url };
             await subscription.save();
         } else {
             subscription = await Subscription.create({
@@ -1008,9 +1261,13 @@ export const createRazorpaySubscription = async (req, res) => {
                 taxes: plan.taxes || [],
                 features: plan.features,
                 enabled_features: plan.enabled_features,
-                auto_renew: true
+                auto_renew: true,
+                metadata: { payment_link: linkResult.short_url }
             });
         }
+
+        const setting = await Setting.findOne().lean();
+        const razorpay_key_id = setting?.razorpay_key_id || process.env.RAZORPAY_KEY_ID;
 
         return res.status(200).json({
             success: true,
@@ -1019,9 +1276,10 @@ export const createRazorpaySubscription = async (req, res) => {
                 subscription,
                 subscription_link: linkResult.short_url,
                 payment_link: linkResult.short_url,
+                razorpay_subscription_id: linkResult.id,
                 plan_id: plan._id,
                 plan_name: plan.name,
-                razorpay_key_id: process.env.RAZORPAY_KEY_ID
+                razorpay_key_id
             }
         });
     } catch (error) {
@@ -1031,6 +1289,70 @@ export const createRazorpaySubscription = async (req, res) => {
             message: 'Failed to create subscription',
             error: error.message
         });
+    }
+};
+
+export const handleRazorpaySubscriptionCallback = async (req, res) => {
+    try {
+        const body = req.method === 'POST' ? req.body : req.query;
+        const razorpay_payment_id = body.razorpay_payment_id;
+        const razorpay_subscription_id = body.razorpay_subscription_id;
+        const razorpay_signature = body.razorpay_signature;
+
+        const frontendUrl = process.env.FRONTEND_URL || process.env.APP_URL || 'http://localhost:3000';
+        const targetUrl = `${frontendUrl.replace(/\/$/, '')}/billing_plans`;
+
+        if (razorpay_payment_id && razorpay_subscription_id && razorpay_signature) {
+            const isValid = await RazorpayService.verifyPaymentSignature(
+                razorpay_payment_id,
+                razorpay_subscription_id,
+                razorpay_signature
+            );
+
+            if (isValid) {
+                const subscription = await Subscription.findOne({
+                    razorpay_subscription_id,
+                    deleted_at: null
+                }).populate('plan_id');
+
+                if (subscription) {
+                    subscription.status = 'active';
+                    subscription.payment_status = 'paid';
+                    subscription.transaction_id = razorpay_payment_id;
+                    subscription.current_period_start = new Date();
+                    if (subscription.plan_id) {
+                        subscription.current_period_end = calculatePeriodEnd(
+                            subscription.current_period_start,
+                            subscription.plan_id.billing_cycle
+                        );
+                    }
+                    await subscription.save();
+
+                    // Cancel other active subscriptions for this user
+                    await Subscription.updateMany(
+                        {
+                            user_id: subscription.user_id,
+                            _id: { $ne: subscription._id },
+                            status: { $in: ['active', 'trial'] }
+                        },
+                        {
+                            $set: {
+                                status: 'canceled',
+                                cancelled_at: new Date(),
+                                auto_renew: false
+                            }
+                        }
+                    );
+                }
+                return res.redirect(`${targetUrl}?payment=success&gateway=razorpay`);
+            }
+        }
+
+        return res.redirect(`${targetUrl}?payment=completed&gateway=razorpay`);
+    } catch (error) {
+        console.error('Error in Razorpay subscription callback:', error);
+        const frontendUrl = process.env.FRONTEND_URL || process.env.APP_URL || 'http://localhost:3000';
+        return res.redirect(`${frontendUrl.replace(/\/$/, '')}/billing_plans?payment=error`);
     }
 };
 
@@ -1073,8 +1395,8 @@ export const createPayPalSubscription = async (req, res) => {
             });
         }
 
-        const returnUrl = `${process.env.APP_FRONTEND_URL || req.protocol + '://' + req.get('host')}/subscription/success`;
-        const cancelUrl = `${process.env.APP_FRONTEND_URL || req.protocol + '://' + req.get('host')}/subscription/cancel`;
+        const returnUrl = `${process.env.FRONTEND_URL || process.env.APP_URL || req.protocol + '://' + req.get('host')}/billing_plans`;
+        const cancelUrl = `${process.env.FRONTEND_URL || process.env.APP_URL || req.protocol + '://' + req.get('host')}/billing_plans`;
 
         const paypalSubscription = await PayPalService.createSubscription(
             plan.paypal_plan_id,
@@ -1099,6 +1421,7 @@ export const createPayPalSubscription = async (req, res) => {
         if (subscription) {
             subscription.paypal_subscription_id = paypalSubscription.id;
             subscription.current_period_end = periodEnd;
+            subscription.metadata = { ...subscription.metadata, payment_link: approvalUrl };
             await subscription.save();
         } else {
             subscription = await Subscription.create({
@@ -1116,7 +1439,8 @@ export const createPayPalSubscription = async (req, res) => {
                 taxes: plan.taxes || [],
                 features: plan.features,
                 enabled_features: plan.enabled_features,
-                auto_renew: true
+                auto_renew: true,
+                metadata: { payment_link: approvalUrl }
             });
         }
 
@@ -1197,6 +1521,13 @@ export const assignPlanToUser = async (req, res) => {
                     console.error('Error canceling PayPal subscription during admin reassignment:', err);
                 }
             }
+            if (sub.mollie_subscription_id && sub.mollie_customer_id) {
+                try {
+                    await mollie.cancelSubscription(sub.mollie_customer_id, sub.mollie_subscription_id);
+                } catch (err) {
+                    console.error('Error canceling Mollie subscription during admin reassignment:', err);
+                }
+            }
 
             sub.status = 'canceled';
             sub.cancelled_at = new Date();
@@ -1272,7 +1603,7 @@ export const cancelSubscription = async (req, res) => {
     try {
         const { id } = req.params;
         const { user_id, cancel_at_period_end = true } = req.body;
-        const userId = req.user._id;
+        const userId = req.user.owner_id || req.user._id;
 
         const query = {
             _id: id,
@@ -1296,23 +1627,48 @@ export const cancelSubscription = async (req, res) => {
         }
 
         if (subscription.payment_gateway === 'stripe' && subscription.stripe_subscription_id) {
-            await StripeService.cancelSubscription(
-                subscription.stripe_subscription_id,
-                cancel_at_period_end
-            );
+            try {
+                await StripeService.cancelSubscription(
+                    subscription.stripe_subscription_id,
+                    cancel_at_period_end
+                );
+            } catch (err) {
+                console.warn('[SubscriptionController] Error cancelling Stripe subscription upstream:', err.message);
+            }
         } else if (subscription.payment_gateway === 'razorpay' && subscription.razorpay_subscription_id) {
-            await RazorpayService.cancelSubscription(
-                subscription.razorpay_subscription_id,
-                cancel_at_period_end
-            );
+            try {
+                await RazorpayService.cancelSubscription(
+                    subscription.razorpay_subscription_id,
+                    cancel_at_period_end
+                );
+            } catch (err) {
+                console.warn('[SubscriptionController] Error cancelling Razorpay subscription upstream:', err.message);
+            }
         } else if (subscription.payment_gateway === 'paypal' && subscription.paypal_subscription_id) {
-            await PayPalService.cancelSubscription(
-                subscription.paypal_subscription_id,
-                'User cancelled'
-            );
+            try {
+                await PayPalService.cancelSubscription(
+                    subscription.paypal_subscription_id,
+                    'User cancelled'
+                );
+            } catch (err) {
+                console.warn('[SubscriptionController] Error cancelling PayPal subscription upstream:', err.message);
+            }
+        } else if (subscription.payment_gateway === 'mollie' && subscription.mollie_subscription_id && subscription.mollie_customer_id) {
+            try {
+                await mollie.cancelSubscription(
+                    subscription.mollie_customer_id,
+                    subscription.mollie_subscription_id
+                );
+            } catch (err) {
+                console.warn('[SubscriptionController] Error cancelling Mollie subscription upstream:', err.message);
+            }
         }
 
-        if (cancel_at_period_end) {
+        if (subscription.status === 'pending') {
+            subscription.status = 'canceled';
+            subscription.cancelled_at = new Date();
+            subscription.auto_renew = false;
+        } else if (cancel_at_period_end) {
             subscription.auto_renew = false;
             subscription.cancelled_at = new Date();
         } else {
@@ -1325,9 +1681,9 @@ export const cancelSubscription = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            message: cancel_at_period_end
-                ? 'Subscription will be cancelled at period end'
-                : 'Subscription cancelled immediately',
+            message: subscription.status === 'canceled'
+                ? 'Subscription cancelled immediately'
+                : 'Subscription will be cancelled at period end',
             data: subscription
         });
     } catch (error) {
@@ -1398,10 +1754,11 @@ export const resumeSubscription = async (req, res) => {
 export const changeSubscriptionPlan = async (req, res) => {
     try {
         const { id } = req.params;
-        const { new_plan_id } = req.body;
+        const { new_plan_id, payment_gateway } = req.body;
+        const targetPlanId = new_plan_id || req.body.plan_id;
         const userId = req.user._id;
 
-        if (!new_plan_id || !mongoose.Types.ObjectId.isValid(new_plan_id)) {
+        if (!targetPlanId || !mongoose.Types.ObjectId.isValid(targetPlanId)) {
             return res.status(400).json({
                 success: false,
                 message: 'Valid new plan ID is required'
@@ -1428,7 +1785,7 @@ export const changeSubscriptionPlan = async (req, res) => {
         }
 
         const newPlan = await Plan.findOne({
-            _id: new_plan_id,
+            _id: targetPlanId,
             is_active: true,
             deleted_at: null
         }).populate('currency');
@@ -1440,16 +1797,37 @@ export const changeSubscriptionPlan = async (req, res) => {
             });
         }
 
-        if (subscription.plan_id?.toString() === new_plan_id) {
+        if (subscription.plan_id?.toString() === targetPlanId) {
             return res.status(400).json({
                 success: false,
                 message: 'Already subscribed to this plan'
             });
         }
 
-        if (subscription.payment_gateway === 'paypal' && newPlan.paypal_plan_id) {
-            const returnUrl = `${process.env.APP_FRONTEND_URL || req.protocol + '://' + req.get('host')}/subscription/success`;
-            const cancelUrl = `${process.env.APP_FRONTEND_URL || req.protocol + '://' + req.get('host')}/subscription/cancel`;
+        // Clean up any existing pending subscriptions for the user to avoid conflicts
+        await Subscription.updateMany(
+            { user_id: subscription.user_id, status: 'pending', deleted_at: null },
+            { $set: { deleted_at: new Date(), status: 'canceled' } }
+        );
+
+        let gateway = payment_gateway || subscription.payment_gateway;
+        if (gateway === 'pending' || gateway === 'cash' || gateway === 'bank_transfer') {
+            gateway = 'manual';
+        }
+        if (!gateway || gateway === 'admin generated') {
+            gateway = 'stripe';
+        }
+
+        if (gateway === 'paypal') {
+            if (!newPlan.paypal_plan_id) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'New plan does not have PayPal plan ID configured'
+                });
+            }
+
+            const returnUrl = `${process.env.FRONTEND_URL || process.env.APP_URL || req.protocol + '://' + req.get('host')}/billing_plans`;
+            const cancelUrl = `${process.env.FRONTEND_URL || process.env.APP_URL || req.protocol + '://' + req.get('host')}/billing_plans`;
 
             const paypalSubscription = await PayPalService.createSubscription(
                 newPlan.paypal_plan_id,
@@ -1478,7 +1856,8 @@ export const changeSubscriptionPlan = async (req, res) => {
                 taxes: newPlan.taxes || [],
                 features: newPlan.features,
                 enabled_features: newPlan.enabled_features,
-                auto_renew: true
+                auto_renew: true,
+                metadata: { payment_link: approvalUrl }
             });
 
             return res.status(200).json({
@@ -1495,13 +1874,21 @@ export const changeSubscriptionPlan = async (req, res) => {
             });
         }
 
-        if (subscription.payment_gateway === 'stripe') {
+        if (gateway === 'stripe') {
             if (!newPlan.stripe_payment_link_url) {
                 return res.status(400).json({
                     success: false,
                     message: 'New plan does not have a Stripe payment link configured'
                 });
             }
+
+            const separator = newPlan.stripe_payment_link_url.includes('?') ? '&' : '?';
+            const params = new URLSearchParams();
+            params.set('client_reference_id', userId.toString());
+            if (req.user?.email) {
+                params.set('prefilled_email', req.user.email);
+            }
+            const paymentLink = `${newPlan.stripe_payment_link_url}${separator}${params.toString()}`;
 
             const now = new Date();
             const periodEnd = calculatePeriodEnd(now, newPlan.billing_cycle || 'monthly');
@@ -1520,16 +1907,9 @@ export const changeSubscriptionPlan = async (req, res) => {
                 taxes: newPlan.taxes || [],
                 features: newPlan.features,
                 enabled_features: newPlan.enabled_features,
-                auto_renew: true
+                auto_renew: true,
+                metadata: { payment_link: paymentLink }
             });
-
-            const separator = newPlan.stripe_payment_link_url.includes('?') ? '&' : '?';
-            const params = new URLSearchParams();
-            params.set('client_reference_id', userId.toString());
-            if (req.user?.email) {
-                params.set('prefilled_email', req.user.email);
-            }
-            const paymentLink = `${newPlan.stripe_payment_link_url}${separator}${params.toString()}`;
 
             return res.status(200).json({
                 success: true,
@@ -1543,8 +1923,13 @@ export const changeSubscriptionPlan = async (req, res) => {
             });
         }
 
-        if (subscription.payment_gateway === 'razorpay' && newPlan.razorpay_plan_id) {
-
+        if (gateway === 'razorpay') {
+            if (!newPlan.razorpay_plan_id) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'New plan does not have Razorpay plan ID configured'
+                });
+            }
 
             const linkResult = await RazorpayService.createSubscriptionLink(
                 newPlan.razorpay_plan_id,
@@ -1575,8 +1960,12 @@ export const changeSubscriptionPlan = async (req, res) => {
                 taxes: newPlan.taxes || [],
                 features: newPlan.features,
                 enabled_features: newPlan.enabled_features,
-                auto_renew: true
+                auto_renew: true,
+                metadata: { payment_link: linkResult.short_url }
             });
+
+            const setting = await Setting.findOne().lean();
+            const razorpay_key_id = setting?.razorpay_key_id || process.env.RAZORPAY_KEY_ID;
 
             return res.status(200).json({
                 success: true,
@@ -1585,14 +1974,128 @@ export const changeSubscriptionPlan = async (req, res) => {
                     subscription: newSubscription,
                     subscription_link: linkResult.short_url,
                     payment_link: linkResult.short_url,
+                    razorpay_subscription_id: linkResult.id,
+                    razorpay_key_id,
+                    plan_id: newPlan._id,
+                    plan_name: newPlan.name,
                     new_plan_id: newPlan._id,
                     new_plan_name: newPlan.name
                 }
             });
         }
 
-        if (subscription.payment_gateway === 'manual' || subscription.payment_gateway === 'admin generated') {
-            const existingPending = await Subscription.findOne({
+        if (gateway === 'mollie') {
+            const redirectUrl = `${process.env.FRONTEND_URL || process.env.APP_URL || req.protocol + '://' + req.get('host')}/billing_plans`;
+            const webhookUrl = `${process.env.APP_URL || req.protocol + '://' + req.get('host')}/api/webhook/mollie`;
+
+            const customer = await mollie.createOrGetCustomer(req.user);
+
+            const linkResult = await mollie.createPaymentLink(
+                newPlan.price,
+                (newPlan.currency?.code || newPlan.currency || 'EUR').toString().toUpperCase(),
+                newPlan,
+                req.user,
+                webhookUrl,
+                redirectUrl,
+                customer.id
+            );
+
+            const now = new Date();
+            const periodEnd = calculatePeriodEnd(now, newPlan.billing_cycle);
+            const newSubscription = await Subscription.create({
+                user_id: userId,
+                plan_id: newPlan._id,
+                status: 'pending',
+                started_at: now,
+                current_period_start: now,
+                current_period_end: periodEnd,
+                payment_gateway: 'mollie',
+                payment_method: 'card',
+                payment_status: 'pending',
+                currency: (newPlan.currency?.code || newPlan.currency || 'EUR').toString().toUpperCase(),
+                transaction_id: linkResult.id,
+                mollie_customer_id: customer.id,
+                taxes: newPlan.taxes || [],
+                features: newPlan.features,
+                enabled_features: newPlan.enabled_features,
+                auto_renew: true
+            });
+
+            return res.status(200).json({
+                success: true,
+                message: 'New plan request created. Current subscription remains active until payment is completed. Redirect user to the subscription link.',
+                data: {
+                    subscription: newSubscription,
+                    payment_link: linkResult.url,
+                    new_plan_id: newPlan._id,
+                    new_plan_name: newPlan.name
+                }
+            });
+        }
+
+        if (gateway === 'midtrans') {
+            const returnUrl = `${process.env.FRONTEND_URL || process.env.APP_URL || req.protocol + '://' + req.get('host')}/billing_plans`;
+            const cancelUrl = `${process.env.FRONTEND_URL || process.env.APP_URL || req.protocol + '://' + req.get('host')}/billing_plans`;
+
+            const linkResult = await midtrans.createPaymentLink(
+                newPlan,
+                userId,
+                req.user?.email || 'test@example.com',
+                req.user?.phone || '08123456789',
+                returnUrl,
+                cancelUrl
+            );
+
+            const now = new Date();
+            const periodEnd = calculatePeriodEnd(now, newPlan.billing_cycle);
+            const newSubscription = await Subscription.create({
+                user_id: userId,
+                plan_id: newPlan._id,
+                status: 'pending',
+                started_at: now,
+                current_period_start: now,
+                current_period_end: periodEnd,
+                payment_gateway: 'midtrans',
+                payment_method: 'card',
+                payment_status: 'pending',
+                currency: (newPlan.currency?.code || newPlan.currency || 'IDR').toString().toUpperCase(),
+                transaction_id: linkResult.id,
+                taxes: newPlan.taxes || [],
+                features: newPlan.features,
+                enabled_features: newPlan.enabled_features,
+                auto_renew: true,
+                metadata: { payment_link: linkResult.payment_link }
+            });
+
+            return res.status(200).json({
+                success: true,
+                message: 'New plan request created. Redirect user to the payment link to complete the change.',
+                data: {
+                    subscription: newSubscription,
+                    payment_link: linkResult.payment_link,
+                    new_plan_id: newPlan._id,
+                    new_plan_name: newPlan.name
+                }
+            });
+        }
+
+        if (gateway === 'manual') {
+            const {
+                payment_reference,
+                manual_payment_type,
+                bank_account_no,
+                bank_name,
+                bank_holder_name,
+                bank_swift_code,
+                bank_routing_number,
+                bank_ifsc_no
+            } = req.body;
+
+            const transaction_receipt = req.file ? req.file.path : null;
+
+            const selectedManualType = manual_payment_type || req.body.payment_method || 'cash';
+
+            let existingPending = await Subscription.findOne({
                 user_id: userId,
                 plan_id: newPlan._id,
                 payment_gateway: 'manual',
@@ -1601,9 +2104,23 @@ export const changeSubscriptionPlan = async (req, res) => {
             });
 
             if (existingPending) {
+                existingPending.payment_reference = payment_reference?.trim() || existingPending.payment_reference;
+                if (transaction_receipt) existingPending.transaction_receipt = transaction_receipt;
+                existingPending.manual_payment_type = selectedManualType;
+                existingPending.payment_method = selectedManualType === 'bank_transfer' ? 'bank_transfer' : 'cash';
+                if (selectedManualType === 'bank_transfer') {
+                    existingPending.bank_account_no = bank_account_no || existingPending.bank_account_no;
+                    existingPending.bank_name = bank_name || existingPending.bank_name;
+                    existingPending.bank_holder_name = bank_holder_name || existingPending.bank_holder_name;
+                    existingPending.bank_swift_code = bank_swift_code || existingPending.bank_swift_code;
+                    existingPending.bank_routing_number = bank_routing_number || existingPending.bank_routing_number;
+                    existingPending.bank_ifsc_no = bank_ifsc_no || existingPending.bank_ifsc_no;
+                }
+                await existingPending.save();
+
                 return res.status(200).json({
                     success: true,
-                    message: 'Manual payment subscription change request already submitted. Awaiting admin approval.',
+                    message: 'Manual payment subscription change request updated. Awaiting admin approval.',
                     data: {
                         subscription: existingPending,
                         new_plan_id: newPlan._id,
@@ -1623,20 +2140,22 @@ export const changeSubscriptionPlan = async (req, res) => {
                 current_period_start: now,
                 current_period_end: periodEnd,
                 payment_gateway: 'manual',
-                payment_method: subscription.payment_method || 'manual',
+                payment_method: selectedManualType === 'bank_transfer' ? 'bank_transfer' : 'cash',
                 payment_status: 'pending',
+                payment_reference: payment_reference?.trim() || null,
+                transaction_receipt: transaction_receipt,
                 currency: (newPlan.currency?.code || newPlan.currency || 'INR').toString().toUpperCase(),
                 taxes: newPlan.taxes || [],
                 features: newPlan.features,
                 enabled_features: newPlan.enabled_features,
                 auto_renew: false,
-                manual_payment_type: subscription.manual_payment_type || 'cash',
-                bank_account_no: subscription.bank_account_no,
-                bank_name: subscription.bank_name,
-                bank_holder_name: subscription.bank_holder_name,
-                bank_swift_code: subscription.bank_swift_code,
-                bank_routing_number: subscription.bank_routing_number,
-                bank_ifsc_no: subscription.bank_ifsc_no
+                manual_payment_type: selectedManualType,
+                bank_account_no: selectedManualType === 'bank_transfer' ? bank_account_no : null,
+                bank_name: selectedManualType === 'bank_transfer' ? bank_name : null,
+                bank_holder_name: selectedManualType === 'bank_transfer' ? bank_holder_name : null,
+                bank_swift_code: selectedManualType === 'bank_transfer' ? bank_swift_code : null,
+                bank_routing_number: selectedManualType === 'bank_transfer' ? bank_routing_number : null,
+                bank_ifsc_no: selectedManualType === 'bank_transfer' ? bank_ifsc_no : null
             });
 
             return res.status(200).json({
@@ -1652,7 +2171,7 @@ export const changeSubscriptionPlan = async (req, res) => {
 
         return res.status(400).json({
             success: false,
-            message: 'Plan change not supported for this subscription'
+            message: 'Plan change not supported for this subscription or gateway'
         });
     } catch (error) {
         console.error('Error changing subscription plan:', error);
@@ -1750,11 +2269,12 @@ export const getSubscriptionUsage = async (req, res) => {
         const plan = subscription.plan_id;
         const features = plan?.features || {};
 
-        const [tagsCount, contactsCount, templatesCount, campaignsCount] = await Promise.all([
+        const [tagsCount, contactsCount, templatesCount, campaignsCount, webhookCount] = await Promise.all([
             Tag.countDocuments({ created_by: userId, deleted_at: null }),
             Contact.countDocuments({ user_id: userId, deleted_at: null }),
             Template.countDocuments({ user_id: userId }),
-            Campaign.countDocuments({ user_id: userId, deleted_at: null })
+            Campaign.countDocuments({ user_id: userId, deleted_at: null }),
+            Webhook.countDocuments({ user_id: userId })
         ]);
 
         const limitOrUnlimited = (limit) => (limit > 0 ? limit : Infinity);
@@ -1781,6 +2301,11 @@ export const getSubscriptionUsage = async (req, res) => {
                 used: campaignsCount,
                 limit: features.campaigns ?? 0,
                 percentage: percentage(campaignsCount, features.campaigns ?? 0)
+            },
+            whatsapp_webhook: {
+                used: webhookCount,
+                limit: features.whatsapp_webhook ?? false,
+                percentage: 0
             }
         };
 
@@ -1940,7 +2465,12 @@ export const downloadInvoice = async (req, res) => {
             });
         }
 
-        if (payment.user_id._id.toString() !== userId.toString() && req.user.role !== 'super_admin') {
+        const ownerId = req.user.owner_id ? req.user.owner_id.toString() : userId.toString();
+        if (
+            payment.user_id._id.toString() !== userId.toString() &&
+            payment.user_id._id.toString() !== ownerId &&
+            req.user.role !== 'super_admin'
+        ) {
             return res.status(403).json({
                 success: false,
                 message: 'Forbidden: You do not have permission to download this invoice'
@@ -2102,6 +2632,89 @@ export const resetSubscriptionLimits = async (req, res) => {
     }
 };
 
+export const getMyBillingHistory = async (req, res) => {
+    try {
+        const { page, limit, skip } = parsePaginationParams(req.query);
+        const { sortField, sortOrder } = parseSortParams(req.query);
+
+        const userId = req.user.owner_id || req.user._id || req.user.id;
+
+        const matchQuery = {
+            user_id: new mongoose.Types.ObjectId(userId),
+            deleted_at: null
+        };
+
+        const {
+            payment_status,
+            payment_gateway,
+            payment_method,
+            search
+        } = req.query;
+
+        if (payment_status && PAYMENT_STATUS.includes(payment_status)) {
+            matchQuery.payment_status = payment_status;
+        }
+
+        if (payment_gateway) {
+            matchQuery.payment_gateway = payment_gateway;
+        }
+
+        if (payment_method) {
+            matchQuery.payment_method = payment_method;
+        }
+
+        const searchParams = { active: false };
+        if (search && String(search).trim()) {
+            searchParams.active = true;
+            searchParams.regex = new RegExp(String(search).trim(), 'i');
+        }
+
+        const pipeline = buildPaymentHistoryAggregation(matchQuery, skip, limit, sortField, sortOrder, searchParams);
+
+        let totalCount = 0;
+        if (searchParams.active) {
+            const countStages = pipeline.filter(s => !s.$skip && !s.$limit && !s.$sort && !s.$project);
+            countStages.push({ $count: 'total' });
+            const countResult = await PaymentHistory.aggregate(countStages);
+            totalCount = countResult[0]?.total || 0;
+        } else {
+            totalCount = await PaymentHistory.countDocuments(matchQuery);
+        }
+
+        const payments = await PaymentHistory.aggregate(pipeline);
+
+        const setting = await Setting.findOne().populate('default_currency').lean();
+        const defaultCurrencyCode = setting?.default_currency?.code || 'INR';
+
+        for (let payment of payments) {
+            const rate = await getExchangeRate(payment.currency || 'INR', defaultCurrencyCode);
+            if (payment.amount != null) payment.amount = formatAmount(payment.amount * rate);
+            if (payment.plan && payment.plan.price != null) payment.plan.price = formatAmount(payment.plan.price * rate);
+            payment.currency = defaultCurrencyCode;
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                payments,
+                pagination: {
+                    currentPage: page,
+                    totalPages: Math.ceil(totalCount / limit),
+                    totalItems: totalCount,
+                    itemsPerPage: limit
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error retrieving user billing history:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to retrieve billing history',
+            error: error.message
+        });
+    }
+};
+
 export default {
     getAllSubscriptions,
     getSubscriptionStats,
@@ -2119,9 +2732,12 @@ export default {
     changeSubscriptionPlan,
     getManagePortalUrl,
     getSubscriptionUsage,
-    getSubscriptionCheckoutUrl,
+    getSubscriptionStats,
     assignPlanToUser,
     downloadInvoice,
     overrideSubscriptionLimits,
-    resetSubscriptionLimits
+    resetSubscriptionLimits,
+    getMyBillingHistory,
+    createMidtransSubscription,
+    handleRazorpaySubscriptionCallback
 };

@@ -29,7 +29,7 @@ const paymentTransactionSchema = new mongoose.Schema({
 
   gateway: {
     type: String,
-    enum: ['razorpay', 'stripe', 'paypal'],
+    enum: ['razorpay', 'stripe', 'paypal', 'midtrans', 'mollie'],
     required: true
   },
 

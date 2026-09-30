@@ -9,6 +9,10 @@ const credentialsSchema = new mongoose.Schema({
 
   client_id: { type: String },
   client_secret: { type: String },
+
+  merchant_id: { type: String },
+  client_key: { type: String },
+  server_key: { type: String },
   mode: { type: String, enum: ['sandbox', 'live'], default: 'live' }
 }, { _id: false });
 
@@ -22,7 +26,7 @@ const paymentGatewayConfigSchema = new mongoose.Schema({
 
   gateway: {
     type: String,
-    enum: ['razorpay', 'stripe', 'paypal'],
+    enum: ['razorpay', 'stripe', 'paypal', 'midtrans', 'mollie'],
     required: true
   },
 

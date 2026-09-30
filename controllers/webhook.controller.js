@@ -1,8 +1,8 @@
 import mongoose from 'mongoose';
 import { Subscription, PaymentHistory, User, Plan } from '../models/index.js';
 import EmailTemplateService from '../services/email-template.service.js';
-import { stripe, getStripe, PayPalService } from '../utils/payment-gateway.service.js';
-import { RazorpayService, calculatePeriodEnd } from '../utils/payment-gateway.service.js';
+import { stripe, getStripe, PayPalService, midtrans, mollie } from '../utils/payment-gateway.service.js';
+import { RazorpayService, calculatePeriodEnd, getRazorpay } from '../utils/payment-gateway.service.js';
 import { generateInvoiceNumber } from '../utils/invoice-helper.js';
 import { formatAmount } from '../utils/currency.service.js';
 
@@ -10,7 +10,7 @@ function getStripeWebhookSecret() {
     return process.env.STRIPE_WEBHOOK_SECRET || null;
 }
 
-const cancelOtherActiveSubscriptions = async (userId, activeSubscriptionId) => {
+export const cancelOtherActiveSubscriptions = async (userId, activeSubscriptionId) => {
     try {
         const otherActiveSubs = await Subscription.find({
             user_id: userId,
@@ -37,6 +37,12 @@ const cancelOtherActiveSubscriptions = async (userId, activeSubscriptionId) => {
                     await PayPalService.cancelSubscription(oldSub.paypal_subscription_id, 'Plan changed');
                 } catch (cancelErr) {
                     console.error('[webhook] Failed to cancel old PayPal subscription:', oldSub.paypal_subscription_id, cancelErr);
+                }
+            } else if (oldSub.payment_gateway === 'midtrans' && oldSub.midtrans_subscription_id) {
+                try {
+                    await midtrans.cancelSubscription(oldSub.midtrans_subscription_id);
+                } catch (cancelErr) {
+                    console.error('[webhook] Failed to cancel old Midtrans subscription:', oldSub.midtrans_subscription_id, cancelErr);
                 }
             }
 
@@ -593,7 +599,7 @@ export const handleRazorpayWebhook = async (req, res) => {
         if (!rawBody && !webhookBody) {
             return res.status(400).json({ error: 'Invalid webhook body' });
         }
-        const isValid = RazorpayService.verifyWebhookSignature(rawBody || JSON.stringify(webhookBody), signature);
+        const isValid = await RazorpayService.verifyWebhookSignature(rawBody || JSON.stringify(webhookBody), signature);
 
         if (!isValid) {
             console.error('⚠️  Razorpay webhook signature verification failed');
@@ -606,6 +612,12 @@ export const handleRazorpayWebhook = async (req, res) => {
         const payload = webhookBody.payload;
 
         switch (event) {
+            case 'payment.captured':
+            case 'payment.authorized':
+            case 'order.paid':
+                await handleRazorpayPaymentCaptured(payload.payment?.entity || payload.order?.entity);
+                break;
+
             case 'subscription.authenticated':
                 await handleRazorpaySubscriptionActivated(payload.subscription.entity);
                 break;
@@ -645,6 +657,117 @@ export const handleRazorpayWebhook = async (req, res) => {
     } catch (error) {
         console.error('Error processing Razorpay webhook:', error);
         res.status(500).json({ error: 'Webhook processing failed' });
+    }
+};
+
+export const handleRazorpayPaymentCaptured = async (payment) => {
+    try {
+        console.log('Processing payment.captured for Razorpay:', payment?.id, payment?.order_id, payment?.subscription_id);
+
+        let subscription = null;
+
+        if (payment?.subscription_id) {
+            subscription = await Subscription.findOne({
+                razorpay_subscription_id: payment.subscription_id,
+                deleted_at: null
+            }).populate('plan_id');
+        }
+
+        if (!subscription && payment?.notes?.userId) {
+            subscription = await Subscription.findOne({
+                user_id: payment.notes.userId,
+                status: 'pending',
+                payment_gateway: 'razorpay',
+                deleted_at: null
+            }).populate('plan_id').sort({ created_at: -1 });
+        }
+
+        if (!subscription && payment?.order_id) {
+            subscription = await Subscription.findOne({
+                $or: [
+                    { 'metadata.order_id': payment.order_id },
+                    { transaction_id: payment.order_id }
+                ],
+                deleted_at: null
+            }).populate('plan_id');
+        }
+
+        if (!subscription && payment?.notes?.planIdDb) {
+            subscription = await Subscription.findOne({
+                plan_id: payment.notes.planIdDb,
+                status: 'pending',
+                payment_gateway: 'razorpay',
+                deleted_at: null
+            }).populate('plan_id').sort({ created_at: -1 });
+        }
+
+        // If order_id is present, check with Razorpay API for the associated subscription or order notes
+        if (!subscription && payment?.order_id) {
+            try {
+                const rzp = await getRazorpay();
+                const order = await rzp.orders.fetch(payment.order_id);
+                if (order?.notes?.subscription_id) {
+                    subscription = await Subscription.findOne({
+                        razorpay_subscription_id: order.notes.subscription_id,
+                        deleted_at: null
+                    }).populate('plan_id');
+                }
+            } catch (err) {
+                console.warn('[webhook] Could not fetch Razorpay order details:', err.message);
+            }
+        }
+
+        // Fallback: If still not found and payment is captured/paid, find any recent pending Razorpay subscription
+        if (!subscription) {
+            subscription = await Subscription.findOne({
+                status: 'pending',
+                payment_gateway: 'razorpay',
+                deleted_at: null
+            }).populate('plan_id').sort({ created_at: -1 });
+        }
+
+        if (!subscription) {
+            console.warn('[webhook] No subscription found matching Razorpay payment:', payment?.id);
+            return null;
+        }
+
+        subscription.payment_status = 'paid';
+        subscription.amount_paid = formatAmount((payment?.amount || 0) / 100);
+        subscription.transaction_id = payment?.id || subscription.transaction_id;
+        subscription.status = 'active';
+
+        const plan = subscription.plan_id;
+        subscription.current_period_start = new Date();
+        if (plan) {
+            subscription.current_period_end = calculatePeriodEnd(new Date(), plan.billing_cycle);
+        }
+        subscription.usage = {};
+        await subscription.save();
+
+        await cancelOtherActiveSubscriptions(subscription.user_id, subscription._id);
+
+        await PaymentHistory.create({
+            user_id: subscription.user_id,
+            subscription_id: subscription._id,
+            plan_id: subscription.plan_id?._id || subscription.plan_id,
+            amount: formatAmount((payment?.amount || 0) / 100),
+            currency: (payment?.currency || subscription.currency || 'INR').toUpperCase(),
+            payment_method: payment?.method || 'card',
+            payment_status: 'success',
+            transaction_id: payment?.id || `RP-${Date.now()}`,
+            payment_gateway: 'razorpay',
+            payment_response: payment || {},
+            invoice_number: generateInvoiceNumber(),
+            taxes: subscription.taxes || [],
+            paid_at: new Date()
+        });
+
+        await EmailTemplateService.sendActivationEmail(subscription);
+        console.log('[webhook] Subscription successfully activated via Razorpay payment.captured:', subscription._id);
+        return subscription;
+    } catch (error) {
+        console.error('[webhook] Error handling Razorpay payment.captured:', error);
+        return null;
     }
 };
 
@@ -949,8 +1072,211 @@ export const handlePayPalWebhook = async (req, res) => {
     }
 };
 
+export const handleMidtransWebhook = async (req, res) => {
+    try {
+        const event = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+        console.log('Midtrans Webhook received:', event.transaction_status);
+
+        const orderId = event.order_id;
+        const transactionStatus = event.transaction_status;
+        
+        let subscription = await Subscription.findOne({
+            $or: [
+                { transaction_id: orderId }
+            ],
+            deleted_at: null
+        }).populate('plan_id');
+        
+        if (!subscription) {
+            console.error('Subscription not found for Midtrans order ID:', orderId);
+            return res.status(200).send('Subscription not found');
+        }
+
+        if (transactionStatus == 'capture' || transactionStatus == 'settlement') {
+            const amount = parseFloat(event.gross_amount || 0);
+            const currency = (event.currency || subscription.currency || 'IDR').toUpperCase();
+
+            if (subscription.payment_status !== 'paid') {
+                subscription.payment_status = 'paid';
+                subscription.status = 'active';
+                subscription.payment_method = 'midtrans';
+                subscription.started_at = new Date();
+                subscription.amount_paid = amount;
+                
+                if (subscription.plan_id.billing_cycle === 'monthly') {
+                    subscription.current_period_end = new Date(new Date().setMonth(new Date().getMonth() + 1));
+                } else if (subscription.plan_id.billing_cycle === 'yearly') {
+                    subscription.current_period_end = new Date(new Date().setFullYear(new Date().getFullYear() + 1));
+                }
+                
+                await subscription.save();
+
+                // Start Midtrans Recurring Subscription if saved_token_id is present
+                if (event.saved_token_id && !subscription.midtrans_subscription_id) {
+                    try {
+                        const midtransSub = await midtrans.createSubscription(event.saved_token_id, subscription.plan_id, subscription.user_id);
+                        subscription.midtrans_subscription_id = midtransSub.id;
+                        await subscription.save();
+                        console.log(`[Midtrans] Core Subscription started successfully: ${midtransSub.id}`);
+                    } catch (subErr) {
+                        console.error('[Midtrans] Failed to start Core Subscription with saved_token_id:', subErr);
+                    }
+                }
+
+                await PaymentHistory.create({
+                    user_id: subscription.user_id,
+                    subscription_id: subscription._id,
+                    plan_id: subscription.plan_id._id,
+                    amount: amount,
+                    currency: currency,
+                    payment_method: 'midtrans',
+                    payment_status: 'success',
+                    transaction_id: orderId,
+                    payment_gateway: 'midtrans',
+                    payment_response: event,
+                    invoice_number: generateInvoiceNumber(),
+                    taxes: subscription.taxes || [],
+                    paid_at: new Date()
+                });
+
+                await EmailTemplateService.sendActivationEmail(subscription);
+                console.log(`Payment recorded for subscription ${subscription._id} via Midtrans`);
+                await cancelOtherActiveSubscriptions(subscription.user_id, subscription._id);
+            }
+        } else if (transactionStatus == 'deny' || transactionStatus == 'cancel' || transactionStatus == 'expire') {
+             if (subscription.payment_status !== 'paid') {
+                 subscription.payment_status = 'failed';
+                 subscription.status = 'cancelled';
+                 await subscription.save();
+             }
+        }
+        
+        return res.status(200).send('Webhook processed');
+    } catch (error) {
+        console.error('Error handling Midtrans webhook:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Internal server error processing webhook',
+            error: error.message
+        });
+    }
+};
+
+
+
+export const handleMollieWebhook = async (req, res) => {
+    try {
+        const { id } = req.body;
+        if (!id) {
+            return res.status(400).send('Missing ID');
+        }
+
+        const payment = await mollie.getPayment(id);
+        
+        if (payment.status === 'paid') {
+            const subscriptionId = payment.subscriptionId;
+            const customerId = payment.customerId;
+            const metadata = payment.metadata || {};
+            
+            const userId = metadata.userId;
+            const planId = metadata.planId;
+            
+            let subscription;
+            
+            if (userId && planId) {
+                // First payment for a new subscription
+                subscription = await Subscription.findOne({
+                    user_id: userId,
+                    plan_id: planId,
+                    status: 'pending',
+                    payment_gateway: 'mollie'
+                });
+                
+                if (subscription) {
+                    const now = new Date();
+                    
+                    subscription.status = 'active';
+                    subscription.payment_status = 'paid';
+                    subscription.mollie_customer_id = customerId;
+                    subscription.started_at = now;
+                    subscription.current_period_start = now;
+                    
+                    const plan = await Plan.findById(planId);
+                    if (plan) {
+                        subscription.current_period_end = calculatePeriodEnd(now, plan.billing_cycle);
+                    }
+                    
+                    await subscription.save();
+                    
+                    await PaymentHistory.create({
+                        user_id: subscription.user_id,
+                        subscription_id: subscription._id,
+                        plan_id: subscription.plan_id,
+                        amount: parseFloat(payment.amount.value),
+                        currency: payment.amount.currency,
+                        payment_method: payment.method || 'card',
+                        payment_status: 'success',
+                        transaction_id: payment.id,
+                        payment_gateway: 'mollie',
+                        payment_response: payment,
+                        invoice_number: generateInvoiceNumber(),
+                        taxes: subscription.taxes,
+                        paid_at: now
+                    });
+                    
+                    await cancelOtherActiveSubscriptions(subscription.user_id, subscription._id);
+                    await EmailTemplateService.sendActivationEmail(subscription);
+                }
+            } else if (subscriptionId) {
+                // Renewal payment
+                subscription = await Subscription.findOne({
+                    mollie_subscription_id: subscriptionId,
+                    mollie_customer_id: customerId
+                });
+                
+                if (subscription) {
+                    const now = new Date();
+                    subscription.status = 'active';
+                    subscription.payment_status = 'paid';
+                    
+                    const plan = await Plan.findById(subscription.plan_id);
+                    if (plan) {
+                        subscription.current_period_start = now;
+                        subscription.current_period_end = calculatePeriodEnd(now, plan.billing_cycle);
+                    }
+                    
+                    await subscription.save();
+                    
+                    await PaymentHistory.create({
+                        user_id: subscription.user_id,
+                        subscription_id: subscription._id,
+                        plan_id: subscription.plan_id,
+                        amount: parseFloat(payment.amount.value),
+                        currency: payment.amount.currency,
+                        payment_method: payment.method || 'card',
+                        payment_status: 'success',
+                        transaction_id: payment.id,
+                        payment_gateway: 'mollie',
+                        payment_response: payment,
+                        invoice_number: generateInvoiceNumber(),
+                        taxes: subscription.taxes,
+                        paid_at: now
+                    });
+                }
+            }
+        }
+        
+        return res.status(200).send('OK');
+    } catch (error) {
+        console.error('Mollie Webhook Error:', error);
+        return res.status(500).send('Webhook Error');
+    }
+};
+
 export default {
     handleStripeWebhook,
     handleRazorpayWebhook,
-    handlePayPalWebhook
+    handlePayPalWebhook,
+    handleMidtransWebhook,
+    handleMollieWebhook
 };

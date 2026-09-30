@@ -27,61 +27,61 @@ const widgetSchema = new mongoose.Schema(
 
     header_text: {
       type: String,
-      default: 'Live Chat',
+      default: 'Chat with us',
       trim: true,
     },
 
     header_text_color: {
       type: String,
-      default: '#ffffff',
+      default: 'var(--white)',
       trim: true,
     },
 
     header_background_color: {
       type: String,
-      default: '#0f6a5b',
+      default: 'var(--primary)',
       trim: true,
     },
 
     body_background_color: {
       type: String,
-      default: '#f6f1ea',
+      default: 'var(--whatsapp-light-bg)',
       trim: true,
     },
 
     welcome_text: {
       type: String,
-      default: '',
+      default: 'Welcome to our support! \n\nThank you for reaching out to us on WhatsApp.',
       trim: true,
     },
 
     welcome_text_color: {
       type: String,
-      default: '#1f2937',
+      default: 'var(--dark-gray)',
       trim: true,
     },
 
     welcome_text_background: {
       type: String,
-      default: '#ffffff',
+      default: 'var(--white)',
       trim: true,
     },
 
     start_chat_button_text: {
       type: String,
-      default: 'Start Chat',
+      default: 'Start Chat on WhatsApp',
       trim: true,
     },
 
     start_chat_button_background: {
       type: String,
-      default: '#25D366',
+      default: 'var(--primary)',
       trim: true,
     },
 
     start_chat_button_text_color: {
       type: String,
-      default: '#ffffff',
+      default: 'var(--white)',
       trim: true,
     },
 
@@ -92,7 +92,7 @@ const widgetSchema = new mongoose.Schema(
 
     default_user_message: {
       type: String,
-      default: '',
+      default: 'Hi, I need help !!',
       trim: true,
     },
 

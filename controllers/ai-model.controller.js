@@ -147,10 +147,15 @@ export const createModel = async (req, res) => {
   try {
     const { displayName, provider, modelId, apiEndpoint, apiVersion, capabilities, config, headersTemplate, requestFormat, responsePath, description } = req.body;
 
-    if (!displayName || !provider || !modelId || !apiEndpoint) {
+    const lowerProvider = provider?.toLowerCase();
+    const isCustom = lowerProvider === 'custom';
+
+    if (!displayName || !provider || !modelId || (isCustom && !apiEndpoint)) {
       return res.status(400).json({
         success: false,
-        message: "displayName, provider, modelId, and apiEndpoint are required",
+        message: isCustom
+          ? "displayName, provider, modelId, and apiEndpoint are required for custom providers"
+          : "displayName, provider, and modelId are required",
       });
     }
 
@@ -170,7 +175,7 @@ export const createModel = async (req, res) => {
       display_name: displayName.trim(),
       provider: provider.toLowerCase(),
       model_id: modelId.trim(),
-      api_endpoint: apiEndpoint.trim(),
+      api_endpoint: apiEndpoint ? apiEndpoint.trim() : "",
       api_version: apiVersion || null,
       capabilities: capabilities || {},
       config: config || {},
@@ -213,13 +218,15 @@ export const updateModel = async (req, res) => {
       });
     }
 
-    const allowedUpdates = ["display_name", "api_endpoint", "api_version", "capabilities", "config", "headers_template", "request_format", "response_path", "status", "is_default", "description"];
+    const allowedUpdates = ["display_name", "model_id", "provider", "api_endpoint", "api_version", "capabilities", "config", "headers_template", "request_format", "response_path", "status", "is_default", "description"];
 
     const fieldMapping = {
       displayName: "display_name",
       modelId: "model_id",
       headersTemplate: "headers_template",
-      apiKey: "api_key"
+      apiKey: "api_key",
+      requestFormat: "request_format",
+      responsePath: "response_path"
     };
 
     allowedUpdates.forEach((field) => {
@@ -237,6 +244,9 @@ export const updateModel = async (req, res) => {
         } else {
           model[field] = updateData[camelCaseField];
         }
+      }
+      if (field === "config" && (updateData[field] !== undefined || updateData.config !== undefined)) {
+        model.markModified('config');
       }
     });
 
@@ -386,37 +396,81 @@ export const toggleModelStatus = async (req, res) => {
 
 export const testModelApi = async (req, res) => {
   try {
-    const { modelId, prompt, apiKey } = req.body;
+    const { modelId, prompt, apiKey, modelConfig } = req.body;
 
-    if (!modelId || !prompt || !apiKey) {
+    if (!prompt || !apiKey) {
       return res.status(400).json({
         success: false,
-        message: "modelId , apiKey and prompt are required",
+        message: "apiKey and prompt are required",
       });
     }
 
-    const model = await AIModel.findOne({
-      _id: modelId,
-      deleted_at: null,
-    }).lean();
+    let cleanModel;
+    let modelDisplayName = "Test Model";
+    let modelProvider = "custom";
 
-    if (!model) {
-      return res.status(404).json({
-        success: false,
-        message: "AI Model not found",
-      });
+    if (modelConfig) {
+      let endpoint = modelConfig.apiEndpoint || modelConfig.api_endpoint;
+      const lowerProvider = modelConfig.provider?.toLowerCase();
+      if (!endpoint && lowerProvider && lowerProvider !== 'custom') {
+        const defaults = {
+          openai: 'https://api.openai.com/v1/chat/completions',
+          google: 'https://generativelanguage.googleapis.com/v1',
+          anthropic: 'https://api.anthropic.com/v1/messages',
+          xai: 'https://api.x.ai/v1/chat/completions',
+          deepseek: 'https://api.deepseek.com/chat/completions',
+          groq: 'https://api.groq.com/openai/v1/chat/completions',
+          mistral: 'https://api.mistral.ai/v1/chat/completions',
+          cohere: 'https://api.cohere.ai/v1/chat',
+        };
+        endpoint = defaults[lowerProvider] || '';
+      }
+
+      cleanModel = {
+        provider: modelConfig.provider,
+        api_version: modelConfig.apiVersion || modelConfig.api_version,
+        headers_template: modelConfig.headersTemplate || modelConfig.headers_template,
+        api_endpoint: endpoint,
+        model_id: modelConfig.modelId || modelConfig.model_id,
+        request_format: modelConfig.requestFormat || modelConfig.request_format,
+        response_path: modelConfig.responsePath || modelConfig.response_path,
+        config: modelConfig.config,
+      };
+      modelDisplayName = modelConfig.displayName || cleanModel.model_id || "Unsaved Model";
+      modelProvider = cleanModel.provider;
+    } else {
+      if (!modelId) {
+        return res.status(400).json({
+          success: false,
+          message: "modelId or modelConfig is required",
+        });
+      }
+
+      const model = await AIModel.findOne({
+        _id: modelId,
+        deleted_at: null,
+      }).lean();
+
+      if (!model) {
+        return res.status(404).json({
+          success: false,
+          message: "AI Model not found",
+        });
+      }
+
+      cleanModel = {
+        provider: model.provider,
+        api_version: model.api_version,
+        headers_template: model.headers_template,
+        api_endpoint: model.api_endpoint,
+        model_id: model.model_id,
+        request_format: model.request_format,
+        response_path: model.response_path,
+        config: model.config,
+      };
+      modelDisplayName = model.display_name;
+      modelProvider = model.provider;
     }
-
-    const cleanModel = {
-      provider: model.provider,
-      api_version: model.api_version,
-      headers_template: model.headers_template,
-      api_endpoint: model.api_endpoint,
-      model_id: model.model_id,
-      request_format: model.request_format,
-      response_path: model.response_path,
-      config: model.config,
-    };
 
     const result = await testAIModel(cleanModel, prompt, apiKey);
 
@@ -424,8 +478,8 @@ export const testModelApi = async (req, res) => {
       success: true,
       data: {
         response: result,
-        model: model.display_name,
-        provider: model.provider,
+        model: modelDisplayName,
+        provider: modelProvider,
       },
     });
   } catch (error) {

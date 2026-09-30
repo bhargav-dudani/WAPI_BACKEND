@@ -3,7 +3,7 @@ import SocialAutomation from '../models/social-automation.model.js';
 import axios from 'axios';
 import { InstagramConnection, FacebookConnection, SocialMediaPost } from '../models/index.js';
 
-const META_GRAPH_API_VERSION = 'v22.0';
+const META_GRAPH_API_VERSION = process.env.WHATSAPP_API_VERSION || 'v22.0';
 
 export const createAutomation = async (req, res) => {
     try {
@@ -378,7 +378,7 @@ export const fetchMedia = async (req, res) => {
             }
         }
 
-        if (allFetchedData.length > 0) {
+         if (allFetchedData.length > 0) {
             const bulkOps = allFetchedData.map(item => ({
                 updateOne: {
                     filter: { connection_id: connection._id, media_id: item.id },
@@ -395,6 +395,9 @@ export const fetchMedia = async (req, res) => {
                             thumbnail_url: item.thumbnail_url,
                             permalink: item.permalink,
                             timestamp: item.timestamp,
+                            status: 'published',
+                            published_at: item.timestamp ? new Date(item.timestamp) : new Date(),
+                            is_imported: true,
                             suggested_keywords: item.suggested_keywords,
                             children: item.children ? item.children.data : null
                         }
@@ -475,7 +478,7 @@ export const retriggerComments = async (req, res) => {
         }
 
         const baseUrl = accessToken.startsWith('IGA') ? 'https://graph.instagram.com' : 'https://graph.facebook.com';
-        const META_GRAPH_API_VERSION = 'v22.0';
+        const META_GRAPH_API_VERSION = process.env.WHATSAPP_API_VERSION || 'v22.0';
 
         let comments = [];
         try {

@@ -153,9 +153,15 @@ const processTranslationUpload = async (files, fieldName, defaultData) => {
             } else {
                 content = fs.readFileSync(path.join(process.cwd(), filePath), 'utf8');
             }
+            
+            if (typeof content === 'string') {
+                content = content.replace(/^\uFEFF/, '');
+            }
+            
             return JSON.parse(content);
         } catch (error) {
             console.error(`Error processing uploaded translation file ${fieldName}:`, error);
+            throw new Error(`Invalid JSON format in ${fieldName}: ${error.message}`);
         }
     }
     return defaultData;
@@ -194,6 +200,7 @@ const loadEnglishTranslations = () => {
 export const createLanguage = async (req, res) => {
     let translationPath = null;
     let flagPath = null;
+    let success = false;
     try {
         const languageData = req.body;
 
@@ -235,6 +242,8 @@ export const createLanguage = async (req, res) => {
 
         if (req.files && req.files.flag && req.files.flag[0]) {
             flagPath = req.files.flag[0].path;
+        } else if (languageData.flag) {
+            flagPath = languageData.flag;
         }
 
         if (is_default === true || is_default === 'true') {
@@ -263,6 +272,7 @@ export const createLanguage = async (req, res) => {
             await setting.save();
         }
 
+        success = true;
         return res.status(201).json({
             success: true,
             message: 'Language created successfully',
@@ -270,14 +280,19 @@ export const createLanguage = async (req, res) => {
         });
     } catch (error) {
         console.error('Error creating language:', error);
-        await cleanupFiles(req.files);
         return res.status(500).json({
             success: false,
             message: 'Failed to create language',
             error: error.message
         });
     } finally {
-        await cleanupFiles(req.files);
+        if (!success) {
+            await cleanupFiles(req.files);
+        } else if (req.files) {
+            const translationFilesOnly = { ...req.files };
+            delete translationFilesOnly.flag;
+            await cleanupFiles(translationFilesOnly);
+        }
     }
 };
 
@@ -362,6 +377,7 @@ export const getLanguageById = async (req, res) => {
 };
 
 export const updateLanguage = async (req, res) => {
+    let success = false;
     try {
         const { id } = req.params;
         const updateData = req.body;
@@ -415,14 +431,13 @@ export const updateLanguage = async (req, res) => {
 
         const oldFlagPath = language.flag;
 
-        if (req.files) {
-            if (req.files.flag && req.files.flag[0]) {
-                language.flag = req.files.flag[0].path;
-            }
+        if (req.files && req.files.flag && req.files.flag[0]) {
+            language.flag = req.files.flag[0].path;
+        } else if (updateData.flag !== undefined) {
+            language.flag = updateData.flag;
         }
 
         if (updateData.name !== undefined) language.name = updateData.name.trim();
-        if (updateData.flag !== undefined && (!req.files || !req.files.flag)) language.flag = updateData.flag;
         if (updateData.is_rtl !== undefined) language.is_rtl = updateData.is_rtl;
 
         if (updateData.is_active !== undefined) {
@@ -468,6 +483,7 @@ export const updateLanguage = async (req, res) => {
             await deleteFile(oldFlagPath);
         }
 
+        success = true;
         return res.status(200).json({
             success: true,
             message: 'Language updated successfully',
@@ -475,14 +491,19 @@ export const updateLanguage = async (req, res) => {
         });
     } catch (error) {
         console.error('Error updating language:', error);
-        await cleanupFiles(req.files);
         return res.status(500).json({
             success: false,
             message: 'Failed to update language',
             error: error.message
         });
     } finally {
-        await cleanupFiles(req.files);
+        if (!success) {
+            await cleanupFiles(req.files);
+        } else if (req.files) {
+            const translationFilesOnly = { ...req.files };
+            delete translationFilesOnly.flag;
+            await cleanupFiles(translationFilesOnly);
+        }
     }
 };
 

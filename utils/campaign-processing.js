@@ -3,7 +3,7 @@ import Template from '../models/template.model.js';
 import WhatsappWaba from '../models/whatsapp-waba.model.js';
 import Contact from '../models/contact.model.js';
 
-const API_VERSION = 'v23.0';
+const API_VERSION = process.env.WHATSAPP_API_VERSION || 'v23.0';
 
 import { getCampaignQueue } from '../queues/campaign-queue.js';
 
@@ -55,31 +55,33 @@ const getQueueSystem = async () => {
   return { campaignQueue };
 };
 
-export const processCampaignInBackground = async (campaignOrId) => {
+export const processCampaignInBackground = async (campaignOrId, options = {}) => {
   try {
     const campaignId = campaignOrId._id || campaignOrId;
 
-    const campaign = await Campaign.findOneAndUpdate(
-      {
-        _id: campaignId,
-        $or: [
-          { status: { $in: ['draft', 'scheduled'] } },
-          { status: 'sending', is_paused: true }
-        ]
-      },
-      {
-        $set: {
-          status: 'sending',
-          is_paused: false
-        }
-      },
-      { new: true }
-    );
-
+    const campaign = await Campaign.findById(campaignId);
     if (!campaign) {
-      console.log(`[Campaign processing] Campaign ${campaignId} is already in sending or completed state. Skipping.`);
+      console.log(`[Campaign processing] Campaign ${campaignId} not found.`);
       return;
     }
+
+    if (campaign.status === 'completed') {
+      console.log(`[Campaign processing] Campaign ${campaignId} is already completed. Skipping.`);
+      return;
+    }
+
+    campaign.status = 'sending';
+    campaign.is_paused = false;
+    campaign.jobs_queued = true;
+    if (!campaign.sent_at) campaign.sent_at = new Date();
+    await Campaign.updateOne({ _id: campaignId }, {
+      $set: {
+        status: 'sending',
+        is_paused: false,
+        jobs_queued: true,
+        sent_at: campaign.sent_at
+      }
+    });
 
     if (!campaign.sent_at) {
       campaign.sent_at = new Date();
@@ -193,7 +195,9 @@ export const processCampaignInBackground = async (campaignOrId) => {
           delay: 1000
         },
         timeout: 30000,
-        jobId: `${campaign._id}-${recipient.contact_id || recipient.phone_number}`
+        // Include the campaign's sent_at epoch so resend campaigns always create
+        // fresh BullMQ job IDs and are never deduplicated against a prior run.
+        jobId: `${campaign._id}-${recipient.contact_id || recipient.phone_number}-${campaign.sent_at ? new Date(campaign.sent_at).getTime() : Date.now()}`
       };
 
       if (currentBatchDelayMs > 0) {
@@ -210,15 +214,21 @@ export const processCampaignInBackground = async (campaignOrId) => {
           },
           userId: campaign.user_id,
           templateData: recipientTemplateData,
-          wabaId: campaign.waba_id
+          wabaId: campaign.waba_id,
+          batchNumber: recipient.batch_number || 1
         },
         opts: jobOpts
       });
     }
 
     if (jobsToAdd.length > 0) {
-      await campaignQueue.addBulk(jobsToAdd);
-      console.log(`Added ${jobsToAdd.length} jobs in bulk to campaign queue for campaign ${campaign._id}`);
+      const CHUNK_SIZE = 200;
+      for (let i = 0; i < jobsToAdd.length; i += CHUNK_SIZE) {
+        const chunk = jobsToAdd.slice(i, i + CHUNK_SIZE);
+        await campaignQueue.addBulk(chunk);
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      console.log(`Added ${jobsToAdd.length} jobs in bulk chunks to campaign queue for campaign ${campaign._id}`);
     }
 
     // Stats have already been initialized/calculated before the jobs were added to the queue to prevent race conditions.
@@ -226,17 +236,26 @@ export const processCampaignInBackground = async (campaignOrId) => {
     console.log(`Campaign ${campaign._id} queued for sending. Total recipients: ${campaign.recipients.length}`);
 
   } catch (error) {
-    console.error('Error processing campaign:', error);
+    console.error('Error processing campaign background runner:', error);
 
     const campaignId = campaignOrId._id || campaignOrId;
-    await Campaign.findByIdAndUpdate(campaignId, {
-      $set: { status: 'failed' },
+    const existing = await Campaign.findById(campaignId).select('status stats').lean();
+    
+    // Only mark status as failed if no messages have been processed yet
+    const hasProgress = existing && (existing.stats?.sent_count > 0 || existing.status === 'sending');
+    
+    const updatePayload = {
       $push: {
         error_log: {
           timestamp: new Date(),
           error: error.message
         }
       }
-    });
+    };
+    if (!hasProgress) {
+      updatePayload.$set = { status: 'failed' };
+    }
+
+    await Campaign.findByIdAndUpdate(campaignId, updatePayload);
   }
 };

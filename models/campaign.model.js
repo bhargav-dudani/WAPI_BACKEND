@@ -64,6 +64,10 @@ const RecipientSchema = new mongoose.Schema({
   message_id: {
     type: String,
     default: null
+  },
+  batch_number: {
+    type: Number,
+    default: 1
   }
 }, { _id: false });
 
@@ -166,7 +170,7 @@ const CampaignSchema = new mongoose.Schema({
 
   carousel_cards_data: [{
     header: {
-      type: { type: String, enum: ['image', 'video', 'document'] },
+      type: { type: String },
       id: { type: String },
       link: { type: String }
     },
@@ -174,10 +178,12 @@ const CampaignSchema = new mongoose.Schema({
       type: String
     },
     buttons: [{
-      type: { type: String, enum: ['quick_reply', 'url'] },
+      type: { type: String },
       text: { type: String },
       payload: { type: String },
-      url_value: { type: String }
+      url_value: { type: String },
+      phone_number: { type: String },
+      url: { type: String }
     }]
   }],
 
@@ -191,6 +197,10 @@ const CampaignSchema = new mongoose.Schema({
     default: false
   },
   is_resend: {
+    type: Boolean,
+    default: false
+  },
+  is_failed_retry: {
     type: Boolean,
     default: false
   },
@@ -245,6 +255,23 @@ const CampaignSchema = new mongoose.Schema({
     type: Number,
     default: null
   },
+  batch_stats: {
+    total_batches: { type: Number, default: 0 },
+    current_batch: { type: Number, default: 0 },
+    completed_batches: { type: Number, default: 0 },
+    pending_batches: { type: Number, default: 0 },
+    next_batch_starts_at: { type: Date, default: null },
+    batch_history: [
+      {
+        batch_number: Number,
+        messages_count: Number,
+        processed_count: { type: Number, default: 0 },
+        started_at: Date,
+        completed_at: Date,
+        status: { type: String, enum: ['pending', 'running', 'completed', 'failed'], default: 'pending' }
+      }
+    ]
+  },
   sent_at: {
     type: Date,
     default: null
@@ -264,6 +291,10 @@ const CampaignSchema = new mongoose.Schema({
     default: 'draft'
   },
   is_paused: {
+    type: Boolean,
+    default: false
+  },
+  jobs_queued: {
     type: Boolean,
     default: false
   },

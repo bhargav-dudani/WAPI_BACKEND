@@ -687,14 +687,18 @@ export const createUser = async (req, res) => {
 
     const existingUser = await User.findOne({
       email: normalizedEmail,
-      deleted_at: null,
     });
 
     if (existingUser) {
-      return res.status(409).json({
-        success: false,
-        message: "Email is already in use",
-      });
+      if (existingUser.deleted_at !== null) {
+        existingUser.email = `${existingUser.email}_deleted_${Date.now()}`;
+        await existingUser.save();
+      } else {
+        return res.status(409).json({
+          success: false,
+          message: "Email is already in use",
+        });
+      }
     }
 
     const hashedPassword = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);

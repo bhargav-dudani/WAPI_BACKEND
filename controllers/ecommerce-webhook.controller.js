@@ -7,7 +7,7 @@ import axios from "axios";
 import crypto from "crypto";
 import WebhookLog from "../models/webhook-log.model.js";
 
-const API_VERSION = "v23.0";
+const API_VERSION = process.env.WHATSAPP_API_VERSION || "v23.0";
 
 const SORT_ORDER = {
   ASC: 1,

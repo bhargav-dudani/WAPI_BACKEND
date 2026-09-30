@@ -52,14 +52,33 @@ const toOrderedTemplateParamValues = (vars) => {
     .map((v) => String(v));
 };
 
+const emitToUser = (event, payload, userId) => {
+  if (!unifiedWhatsAppService.io) return;
+  const targetId = userId?.toString();
+  if (targetId) {
+    unifiedWhatsAppService.io.to(`user_${targetId}`).to(targetId).emit(event, payload);
+  } else {
+    unifiedWhatsAppService.io.emit(event, payload);
+  }
+};
+
 export const processCampaignMessageJob = async (jobData) => {
   const { campaignId, recipient, userId, templateData, wabaId } = jobData;
+  let campaign = null;
 
   if (!recipient || !recipient.phone_number) {
     console.error('Invalid recipient data:', recipient);
-    throw new Error('Invalid recipient data: missing phone_number');
+    return;
   }
 
+  const campaignCheck = await Campaign.findById(campaignId).select('is_paused status').lean();
+  if (!campaignCheck || campaignCheck.is_paused === true || campaignCheck.status !== 'sending') {
+    console.log(`[Job Processor] Campaign ${campaignId} is paused or not in sending state (is_paused: ${campaignCheck?.is_paused}, status: ${campaignCheck?.status}). Skipping job.`);
+    return { success: false, paused: true };
+  }
+
+  const batchNumber = jobData.batchNumber || 1;
+  await startBatchIfNeeded(campaignId, batchNumber);
 
   if (!recipient.contact_id) {
     console.warn('Missing contact_id, processing with phone_number only:', recipient.phone_number);
@@ -96,7 +115,7 @@ export const processCampaignMessageJob = async (jobData) => {
       projection.recipients = { $elemMatch: { phone_number: recipient.phone_number } };
     }
 
-    const campaign = await Campaign.findOne(query, projection).lean();
+    campaign = await Campaign.findOne(query, projection).lean();
     if (!campaign) {
       throw new Error(`Campaign ${campaignId} not found or recipient is not part of this campaign`);
     }
@@ -664,7 +683,7 @@ export const processCampaignMessageJob = async (jobData) => {
             template: template || null,
             metadata: dbMessage.metadata || null
           };
-          unifiedWhatsAppService.io.emit('whatsapp:message', messagePayload);
+          emitToUser('whatsapp:message', messagePayload, userId);
 
           const statusPayload = {
             id: dbMessage._id.toString(),
@@ -698,7 +717,7 @@ export const processCampaignMessageJob = async (jobData) => {
             whatsapp_phone_number_id: null
           };
           console.log('[campaign-job-processor] Emitting whatsapp:status for non-whatsapp message:', statusPayload);
-          unifiedWhatsAppService.io.emit('whatsapp:status', statusPayload);
+          emitToUser('whatsapp:status', statusPayload, userId);
         } catch (socketErr) {
           console.error('Error emitting socket message for non-whatsapp campaign:', socketErr);
         }
@@ -707,7 +726,7 @@ export const processCampaignMessageJob = async (jobData) => {
       let updatedCampaign;
       if (recipient.contact_id) {
         updatedCampaign = await Campaign.findOneAndUpdate(
-          { _id: campaign._id, "recipients.contact_id": recipient.contact_id },
+          { _id: campaign._id, "recipients.contact_id": recipient.contact_id, "recipients.status": "pending" },
           {
             $set: {
               "recipients.$.status": 'sent',
@@ -746,9 +765,14 @@ export const processCampaignMessageJob = async (jobData) => {
       }
 
       if (updatedCampaign && updatedCampaign.stats) {
-        const { pending_count, failed_count } = updatedCampaign.stats;
+        const { pending_count, failed_count, total_recipients } = updatedCampaign.stats;
         if (pending_count === 0) {
-          const status = failed_count > 0 ? 'completed_with_errors' : 'completed';
+          let status = 'completed';
+          if (total_recipients > 0 && failed_count === total_recipients) {
+            status = 'failed';
+          } else if (failed_count > 0) {
+            status = 'completed_with_errors';
+          }
           const updateData = {
             status,
             completed_at: new Date(),
@@ -772,6 +796,23 @@ export const processCampaignMessageJob = async (jobData) => {
         phoneUsed: senderId
       };
     }
+
+    const contact = recipient.contact_id
+      ? await Contact.findById(recipient.contact_id).lean()
+      : null;
+
+    const cleanedPhone = recipient.phone_number ? String(recipient.phone_number).trim() : '';
+    const cleanedBsuid = contact?.whatsapp_bsuid ? String(contact.whatsapp_bsuid).trim() : '';
+
+    if (!cleanedPhone) {
+      throw new Error('Validation failed: Missing phone number');
+    } else if (!/^\+?\d{7,15}$/.test(cleanedPhone)) {
+      throw new Error('Validation failed: Invalid phone number format (must be E.164 compliant)');
+    } else if (cleanedBsuid && cleanedPhone === cleanedBsuid) {
+      throw new Error('Validation failed: Identifier mismatch (BSUID stored in phone field)');
+    }
+
+    console.log(`[Diagnostic Log] [Campaign Dispatch Resolution] Recipient Phone: ${recipient.phone_number}, Contact BSUID: ${cleanedBsuid || 'none'}. Format validation successful.`);
 
     const phoneNumbers = await WhatsappPhoneNumber.find({
       waba_id: wabaId,
@@ -1231,7 +1272,7 @@ export const processCampaignMessageJob = async (jobData) => {
           metadata: existingMessage.metadata || null
         };
         console.log('[campaign-job-processor] Emitting whatsapp:message with payload:', payload);
-        unifiedWhatsAppService.io.emit('whatsapp:message', payload);
+        emitToUser('whatsapp:message', payload, userId);
 
         const statusPayload = {
           id: existingMessage._id.toString(),
@@ -1265,7 +1306,7 @@ export const processCampaignMessageJob = async (jobData) => {
           whatsapp_phone_number_id: selectedPhoneNumber._id?.toString()
         };
         console.log('[campaign-job-processor] Emitting whatsapp:status with payload:', statusPayload);
-        unifiedWhatsAppService.io.emit('whatsapp:status', statusPayload);
+        emitToUser('whatsapp:status', statusPayload, userId);
       } catch (socketErr) {
         console.error('Error emitting socket message for whatsapp campaign:', socketErr);
       }
@@ -1277,7 +1318,7 @@ export const processCampaignMessageJob = async (jobData) => {
     let updatedCampaign;
     if (recipient.contact_id) {
       updatedCampaign = await Campaign.findOneAndUpdate(
-        { _id: campaign._id, "recipients.contact_id": recipient.contact_id },
+        { _id: campaign._id, "recipients.contact_id": recipient.contact_id, "recipients.status": "pending" },
         {
           $set: {
             "recipients.$.status": 'sent',
@@ -1350,9 +1391,14 @@ export const processCampaignMessageJob = async (jobData) => {
     }
 
     if (updatedCampaign && updatedCampaign.stats) {
-      const { pending_count, failed_count } = updatedCampaign.stats;
+      const { pending_count, failed_count, total_recipients } = updatedCampaign.stats;
       if (pending_count === 0) {
-        const status = failed_count > 0 ? 'completed_with_errors' : 'completed';
+        let status = 'completed';
+        if (total_recipients > 0 && failed_count === total_recipients) {
+          status = 'failed';
+        } else if (failed_count > 0) {
+          status = 'completed_with_errors';
+        }
 
         const updateData = {
           status,
@@ -1369,6 +1415,8 @@ export const processCampaignMessageJob = async (jobData) => {
         await Campaign.findByIdAndUpdate(campaign._id, updateData);
       }
     }
+
+    await syncBatchStats(campaignId, batchNumber);
 
     return {
       success: true,
@@ -1408,7 +1456,7 @@ export const processCampaignMessageJob = async (jobData) => {
     let updatedCampaign;
     if (recipient.contact_id) {
       updatedCampaign = await Campaign.findOneAndUpdate(
-        { _id: campaignId, "recipients.contact_id": recipient.contact_id },
+        { _id: campaignId, "recipients.contact_id": recipient.contact_id, "recipients.status": "pending" },
         updateQuery,
         { new: true, select: 'stats sent_at parent_recurring_id', lean: true }
       );
@@ -1443,9 +1491,14 @@ export const processCampaignMessageJob = async (jobData) => {
     }
 
     if (updatedCampaign && updatedCampaign.stats) {
-      const { pending_count, failed_count } = updatedCampaign.stats;
+      const { pending_count, failed_count, total_recipients } = updatedCampaign.stats;
       if (pending_count === 0) {
-        const status = failed_count > 0 ? 'completed_with_errors' : 'completed';
+        let status = 'completed';
+        if (total_recipients > 0 && failed_count === total_recipients) {
+          status = 'failed';
+        } else if (failed_count > 0) {
+          status = 'completed_with_errors';
+        }
 
         const updateData = {
           status,
@@ -1463,8 +1516,11 @@ export const processCampaignMessageJob = async (jobData) => {
       }
     }
 
-    console.error(`Error processing campaign job for recipient ${recipient.phone_number}:`, error);
-    throw error;
+    console.error(`[Campaign Job] Recipient ${recipient.phone_number} failed — error logged, continuing queue:`, error.message);
+    await syncBatchStats(campaignId, batchNumber);
+    // Return gracefully instead of re-throwing so the BullMQ worker stays healthy
+    // and continues processing the remaining recipients in the queue.
+    return { success: false, error: error.message, phone_number: recipient.phone_number };
   }
 };
 
@@ -1488,5 +1544,78 @@ export const monitorCampaignCompletion = async (campaignId) => {
     }
   } catch (error) {
     console.error(`Error monitoring campaign completion ${campaignId}:`, error);
+  }
+};
+
+export const startBatchIfNeeded = async (campaignId, batchNumber) => {
+  try {
+    if (!batchNumber) return;
+    const campaign = await Campaign.findById(campaignId);
+    if (!campaign || !campaign.batch_stats || !campaign.batch_stats.batch_history || campaign.batch_stats.batch_history.length === 0) {
+      return;
+    }
+    const historyIndex = campaign.batch_stats.batch_history.findIndex(h => h.batch_number === batchNumber);
+    if (historyIndex === -1) return;
+
+    const batchItem = campaign.batch_stats.batch_history[historyIndex];
+    if (batchItem.status === 'pending') {
+      batchItem.status = 'running';
+      batchItem.started_at = new Date();
+      campaign.batch_stats.current_batch = batchNumber;
+
+      const nextBatchNumber = batchNumber + 1;
+      const nextIndex = campaign.batch_stats.batch_history.findIndex(h => h.batch_number === nextBatchNumber);
+      if (nextIndex !== -1) {
+        campaign.batch_stats.next_batch_starts_at = campaign.batch_stats.batch_history[nextIndex].started_at;
+      } else {
+        campaign.batch_stats.next_batch_starts_at = null;
+      }
+
+      campaign.markModified('batch_stats');
+      await campaign.save();
+    }
+  } catch (error) {
+    console.error('Error starting batch:', error);
+  }
+};
+
+export const syncBatchStats = async (campaignId, batchNumber) => {
+  try {
+    if (!batchNumber) return;
+    const campaign = await Campaign.findById(campaignId);
+    if (!campaign || !campaign.batch_stats || !campaign.batch_stats.batch_history || campaign.batch_stats.batch_history.length === 0) {
+      return;
+    }
+
+    const batchRecipients = campaign.recipients.filter(r => r.batch_number === batchNumber);
+    const pendingInBatch = batchRecipients.filter(r => r.status === 'pending').length;
+    const processedInBatch = batchRecipients.filter(r => r.status !== 'pending').length;
+
+    const historyIndex = campaign.batch_stats.batch_history.findIndex(h => h.batch_number === batchNumber);
+    if (historyIndex === -1) return;
+
+    const batchHistoryItem = campaign.batch_stats.batch_history[historyIndex];
+    batchHistoryItem.processed_count = processedInBatch;
+
+    if (pendingInBatch === 0 && batchHistoryItem.status !== 'completed') {
+      batchHistoryItem.status = 'completed';
+      batchHistoryItem.completed_at = new Date();
+
+      campaign.batch_stats.completed_batches += 1;
+      campaign.batch_stats.pending_batches = Math.max(0, campaign.batch_stats.total_batches - campaign.batch_stats.completed_batches - 1);
+
+      const nextBatchNumber = batchNumber + 1;
+      if (nextBatchNumber <= campaign.batch_stats.total_batches) {
+        campaign.batch_stats.current_batch = nextBatchNumber;
+        campaign.batch_stats.next_batch_starts_at = campaign.batch_stats.batch_history.find(h => h.batch_number === nextBatchNumber)?.started_at || null;
+      } else {
+        campaign.batch_stats.next_batch_starts_at = null;
+      }
+    }
+
+    campaign.markModified('batch_stats');
+    await campaign.save();
+  } catch (error) {
+    console.error('Error syncing batch stats:', error);
   }
 };

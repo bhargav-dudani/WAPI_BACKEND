@@ -13,7 +13,7 @@ const subscriptionSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['active', 'trial', 'expired', 'canceled', 'suspended', 'pending'],
+        enum: ['active', 'trial', 'expired', 'canceled', 'cancelled', 'suspended', 'pending'],
         default: 'trial'
     },
     started_at: {
@@ -47,18 +47,22 @@ const subscriptionSchema = new mongoose.Schema({
     },
     payment_gateway: {
         type: String,
-        enum: ['stripe', 'razorpay', 'paypal', 'manual', 'free', 'admin generated'],
+        enum: ['stripe', 'razorpay', 'paypal', 'midtrans', 'manual', 'free', 'admin generated'],
         default: null
     },
     payment_method: {
         type: String,
-        enum: ['card', 'upi', 'netbanking', 'wallet', 'manual', 'free', 'cash', 'bank_transfer', 'paypal'],
+        enum: ['card', 'upi', 'netbanking', 'wallet', 'manual', 'free', 'cash', 'bank_transfer', 'paypal', 'midtrans'],
         default: null
     },
     payment_status: {
         type: String,
         enum: ['pending', 'paid', 'failed', 'refunded'],
         default: 'pending'
+    },
+    midtrans_subscription_id: {
+        type: String,
+        default: null
     },
     transaction_id: {
         type: String,
@@ -175,6 +179,10 @@ const subscriptionSchema = new mongoose.Schema({
         type: Boolean,
         default: true
     },
+    activation_email_sent: {
+        type: Boolean,
+        default: false
+    },
     notes: {
         type: String,
         default: null
@@ -204,6 +212,14 @@ const subscriptionSchema = new mongoose.Schema({
         default: null
     },
     paypal_customer_id: {
+        type: String,
+        default: null
+    },
+    mollie_subscription_id: {
+        type: String,
+        default: null
+    },
+    mollie_customer_id: {
         type: String,
         default: null
     },

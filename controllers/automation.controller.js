@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+ import mongoose from 'mongoose';
 import { AutomationFlow, AutomationExecution, AIModel, UserSetting } from '../models/index.js';
 import automationEngine from '../utils/automation-engine.js';
 import automationCache from '../utils/automation-cache.js';
@@ -228,7 +228,7 @@ export const updateAutomationFlow = async (req, res) => {
       });
     }
 
-  if (nodes !== undefined && Array.isArray(nodes)) {
+    if (nodes !== undefined && Array.isArray(nodes)) {
       const prevChatbotIds = new Set(
         (flow.nodes || [])
           .filter(n => n.type === 'assign_chatbot' && n.parameters?.chatbot_id)
@@ -335,6 +335,66 @@ export const deleteAutomationFlow = async (req, res) => {
 };
 
 
+export const cloneAutomationFlow = async (req, res) => {
+  try {
+    const userId = req.user.owner_id;
+    const workspaceId = req.headers['x-workspace-id'] || req.query.workspace_id || req.body.workspace_id;
+    const { flowId } = req.params;
+
+    const query = {
+      _id: flowId,
+      user_id: userId,
+      deleted_at: null
+    };
+
+    if (workspaceId) {
+      query.workspace_id = workspaceId;
+    }
+
+    const originalFlow = await AutomationFlow.findOne(query);
+
+    if (!originalFlow) {
+      return res.status(404).json({
+        success: false,
+        message: 'Automation flow to clone not found'
+      });
+    }
+
+    // Clone data: omit _id and set is_active/is_paused to false
+    const clonedData = {
+      name: `${originalFlow.name} (Copy)`,
+      description: originalFlow.description || '',
+      user_id: userId,
+      workspace_id: originalFlow.workspace_id,
+      platform: originalFlow.platform || 'whatsapp',
+      nodes: originalFlow.nodes || [],
+      connections: originalFlow.connections || [],
+      triggers: originalFlow.triggers || [],
+      settings: originalFlow.settings || {},
+      is_active: false,
+      is_paused: false
+    };
+
+    const newFlow = await AutomationFlow.create(clonedData);
+
+    automationCache.clearUserCache(userId);
+
+    res.status(201).json({
+      success: true,
+      message: 'Automation flow cloned successfully',
+      data: newFlow
+    });
+  } catch (error) {
+    console.error('Error cloning automation flow:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to clone automation flow',
+      error: error.message
+    });
+  }
+};
+
+
 export const toggleAutomationFlow = async (req, res) => {
   try {
     const userId = req.user.owner_id;
@@ -411,7 +471,7 @@ export const togglePauseAutomationFlow = async (req, res) => {
     flow.is_paused = is_paused;
     await flow.save();
 
-     if (flow.nodes && Array.isArray(flow.nodes)) {
+    if (flow.nodes && Array.isArray(flow.nodes)) {
       const chatbotIds = flow.nodes
         .filter(node => node.type === 'assign_chatbot' && node.parameters && node.parameters.chatbot_id)
         .map(node => node.parameters.chatbot_id);
@@ -423,7 +483,7 @@ export const togglePauseAutomationFlow = async (req, res) => {
           { $set: { status: is_paused ? 'inactive' : 'active' } }
         );
 
-      if (is_paused) {
+        if (is_paused) {
           const { default: Contact } = await import('../models/contact.model.js');
           await Contact.updateMany(
             {
@@ -1519,6 +1579,378 @@ export const preloadUserFlows = async (userId) => {
   return await automationCache.preloadUserFlows(userId);
 };
 
+const PLATFORM_CAPABILITIES = {
+  meta: {
+    selectionList: {
+      maxSections: 10,
+      maxRows: 10
+    },
+    quickReply: {
+      maxButtons: 3
+    }
+  },
+  platform: {
+    customFields: false,
+    googleMeet: true,
+    assignAgent: true,
+    supportedVariables: [
+      "name",
+      "phone",
+      "email",
+      "senderNumber",
+      "message"
+    ],
+    contactFields: [
+      "Contact Name",
+      "Phone Number",
+      "Email Address",
+      "Status"
+    ],
+    supportedNodes: [
+      "trigger",
+      "send_message",
+      "condition",
+      "advanced_condition",
+      "wait_for_reply",
+      "ask_and_wait",
+      "send_template",
+      "cta_button",
+      "assign_chatbot",
+      "save_to_google_sheet",
+      "send_google_form",
+      "create_calendar_event",
+      "create_google_meet",
+      "add_tag",
+      "remove_tag",
+      "webhook",
+      "form_flow",
+      "add_to_segment",
+      "update_contact",
+      "assign_agent",
+      "assign_random_agent",
+      "send_sequence",
+      "run_sub_flow",
+      "appointment_flow",
+      "send_catalog",
+      "send_shopify",
+      "move_to_pipeline_stage",
+      "response_saver",
+      "delay",
+      "api"
+    ]
+  }
+};
+
+
+export const getCapabilities = async (req, res) => {
+  try {
+    return res.status(200).json({
+      success: true,
+      data: PLATFORM_CAPABILITIES
+    });
+  } catch (error) {
+    console.error("Error in getCapabilities:", error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+
+const validateFlow = (flow) => {
+  const errors = [];
+  if (!flow || !Array.isArray(flow.nodes)) {
+    return ["Flow is missing nodes array"];
+  }
+
+  const { meta, platform } = PLATFORM_CAPABILITIES;
+
+  flow.nodes.forEach((node) => {
+    const type = node.type;
+    const params = node.parameters || {};
+    const nodeType = params.nodeType;
+
+    if (!platform.supportedNodes.includes(type)) {
+      errors.push(`Node type "${type}" is not supported by the platform.`);
+    }
+    if (type === 'send_message' && nodeType === 'button_message') {
+      const buttons = params.buttons || [];
+      if (buttons.length > meta.quickReply.maxButtons) {
+        errors.push(`Quick Reply node "${node.id}" has ${buttons.length} buttons. Max allowed is ${meta.quickReply.maxButtons}.`);
+      }
+    }
+    if (type === 'send_message' && nodeType === 'list_message') {
+      let totalRows = 0;
+      const sections = params.sections || [];
+      sections.forEach(sec => {
+        totalRows += (sec.items || []).length;
+      });
+      if (totalRows > meta.selectionList.maxRows) {
+        errors.push(`Selection List node "${node.id}" has ${totalRows} rows. Max allowed is ${meta.selectionList.maxRows}.`);
+      }
+    }
+
+    if (type === 'wait_for_reply') {
+      const vName = params.variable_name;
+      if (vName && !platform.supportedVariables.includes(vName)) {
+        errors.push(`Variable "${vName}" in node "${node.id}" is not supported.`);
+      }
+    }
+
+    if (type === 'update_contact') {
+      const updates = params.updates || [];
+      updates.forEach(up => {
+        if (!platform.contactFields.includes(up.field_key)) {
+          errors.push(`Contact Field "${up.field_key}" in update_contact node "${node.id}" is not found.`);
+        }
+      });
+    }
+  });
+
+  return errors;
+};
+
+const autoFixFlow = (flow) => {
+  if (!flow || !Array.isArray(flow.nodes)) return flow;
+
+  const { meta, platform } = PLATFORM_CAPABILITIES;
+  const newNodes = [];
+  const newConnections = [...(flow.connections || [])];
+
+  const nodeSplits = {};
+
+  flow.nodes.forEach((node) => {
+    const type = node.type;
+    const params = node.parameters || {};
+    const nodeType = params.nodeType;
+
+    if (type === 'send_message' && nodeType === 'button_message' && params.buttons && params.buttons.length > meta.quickReply.maxButtons) {
+      const originalButtons = params.buttons;
+      const chunks = [];
+      const maxButtonsPerNode = meta.quickReply.maxButtons;
+      let remaining = [...originalButtons];
+      let page = 1;
+
+      while (remaining.length > 0) {
+        if (remaining.length <= maxButtonsPerNode) {
+          chunks.push({
+            buttons: remaining.splice(0, maxButtonsPerNode),
+            isLast: true
+          });
+        } else {
+          const chunkButtons = remaining.splice(0, maxButtonsPerNode - 1);
+          chunkButtons.push({
+            text: "More Options",
+            value: `more_options_pg_${page}`
+          });
+          chunks.push({
+            buttons: chunkButtons,
+            isLast: false
+          });
+        }
+        page++;
+      }
+
+      const createdNodeIds = [];
+      chunks.forEach((chunk, index) => {
+        const nodeId = index === 0 ? node.id : `${node.id}_split_${index}`;
+        createdNodeIds.push(nodeId);
+
+        const nodeCopy = {
+          ...node,
+          id: nodeId,
+          position: {
+            x: node.position.x + (index * 300),
+            y: node.position.y
+          },
+          parameters: {
+            ...params,
+            label: index === 0 ? params.label : `${params.label} (Cont.)`,
+            buttons: chunk.buttons
+          }
+        };
+
+        newNodes.push(nodeCopy);
+
+        if (!chunk.isLast) {
+          const nextNodeId = `${node.id}_split_${index + 1}`;
+          newConnections.push({
+            id: `edge_split_${node.id}_${index}`,
+            source: nodeId,
+            target: nextNodeId,
+            sourceHandle: `src-btn-2`,
+            targetHandle: "tgt"
+          });
+        }
+      });
+
+      originalButtons.forEach((btn, btnIndex) => {
+        let chunkIndex = 0;
+        let buttonInChunkIndex = btnIndex;
+
+        let accum = 0;
+        for (let i = 0; i < chunks.length; i++) {
+          const chunkLen = chunks[i].isLast ? chunks[i].buttons.length : chunks[i].buttons.length - 1;
+          if (btnIndex < accum + chunkLen) {
+            chunkIndex = i;
+            buttonInChunkIndex = btnIndex - accum;
+            break;
+          }
+          accum += chunkLen;
+        }
+
+        const sourceNodeId = createdNodeIds[chunkIndex] || node.id;
+        const sourceHandleToFind = `src-btn-${btnIndex}`;
+        const newSourceHandle = `src-btn-${buttonInChunkIndex}`;
+
+        newConnections.forEach(conn => {
+          if (conn.source === node.id && conn.sourceHandle === sourceHandleToFind) {
+            conn.source = sourceNodeId;
+            conn.sourceHandle = newSourceHandle;
+          }
+        });
+      });
+
+      return;
+    }
+
+    if (type === 'send_message' && nodeType === 'list_message') {
+      let allItems = [];
+      const sections = params.sections || [];
+      sections.forEach(sec => {
+        (sec.items || []).forEach(item => {
+          allItems.push({
+            ...item,
+            sectionTitle: sec.title || "Options"
+          });
+        });
+      });
+
+      if (allItems.length > meta.selectionList.maxRows) {
+        const chunks = [];
+        let remaining = [...allItems];
+        const maxRowsPerNode = meta.selectionList.maxRows; // 10
+        let page = 1;
+
+        while (remaining.length > 0) {
+          if (remaining.length <= maxRowsPerNode) {
+            chunks.push({
+              items: remaining.splice(0, maxRowsPerNode),
+              isLast: true
+            });
+          } else {
+            const chunkItems = remaining.splice(0, maxRowsPerNode - 1);
+            chunkItems.push({
+              title: "More Options",
+              description: "View next page of options",
+              sectionTitle: "More Options"
+            });
+            chunks.push({
+              items: chunkItems,
+              isLast: false
+            });
+          }
+          page++;
+        }
+
+        const createdNodeIds = [];
+        chunks.forEach((chunk, index) => {
+          const nodeId = index === 0 ? node.id : `${node.id}_split_list_${index}`;
+          createdNodeIds.push(nodeId);
+
+          const groupedSections = [];
+          const sectionMap = {};
+          chunk.items.forEach(item => {
+            const secTitle = item.sectionTitle;
+            if (!sectionMap[secTitle]) {
+              sectionMap[secTitle] = { title: secTitle, items: [] };
+              groupedSections.push(sectionMap[secTitle]);
+            }
+            const cleanItem = { ...item };
+            delete cleanItem.sectionTitle;
+            sectionMap[secTitle].items.push(cleanItem);
+          });
+
+          const nodeCopy = {
+            ...node,
+            id: nodeId,
+            position: {
+              x: node.position.x + (index * 300),
+              y: node.position.y
+            },
+            parameters: {
+              ...params,
+              label: index === 0 ? params.label : `${params.label} (Cont.)`,
+              sections: groupedSections
+            }
+          };
+
+          newNodes.push(nodeCopy);
+
+          if (!chunk.isLast) {
+            const nextNodeId = `${node.id}_split_list_${index + 1}`;
+            newConnections.push({
+              id: `edge_split_list_${node.id}_${index}`,
+              source: nodeId,
+              target: nextNodeId,
+              sourceHandle: `src-item-9`,
+              targetHandle: "tgt"
+            });
+          }
+        });
+
+        allItems.forEach((item, itemIndex) => {
+          let chunkIndex = 0;
+          let itemInChunkIndex = itemIndex;
+
+          let accum = 0;
+          for (let i = 0; i < chunks.length; i++) {
+            const chunkLen = chunks[i].isLast ? chunks[i].items.length : chunks[i].items.length - 1;
+            if (itemIndex < accum + chunkLen) {
+              chunkIndex = i;
+              itemInChunkIndex = itemIndex - accum;
+              break;
+            }
+            accum += chunkLen;
+          }
+
+          const sourceNodeId = createdNodeIds[chunkIndex] || node.id;
+          const sourceHandleToFind = `src-item-${itemIndex}`;
+          const newSourceHandle = `src-item-${itemInChunkIndex}`;
+
+          newConnections.forEach(conn => {
+            if (conn.source === node.id && conn.sourceHandle === sourceHandleToFind) {
+              conn.source = sourceNodeId;
+              conn.sourceHandle = newSourceHandle;
+            }
+          });
+        });
+
+        return;
+      }
+    }
+
+    if (type === 'wait_for_reply') {
+      const vName = params.variable_name;
+      if (vName && !platform.supportedVariables.includes(vName)) {
+        node.parameters.variable_name = "message";
+      }
+    }
+
+    if (type === 'update_contact') {
+      const updates = params.updates || [];
+      const validUpdates = updates.filter(up => platform.contactFields.includes(up.field_key));
+      node.parameters.updates = validUpdates.length > 0 ? validUpdates : [{ field_key: "Contact Name", value: "{{name}}" }];
+    }
+
+    newNodes.push(node);
+  });
+
+  return {
+    ...flow,
+    nodes: newNodes,
+    connections: newConnections
+  };
+};
+
 export const suggestAutomationFlow = async (req, res) => {
   try {
     const { businessName, language, industry, occasion, purpose, action, tone, additionalDetails, platform } = req.body;
@@ -1566,7 +1998,22 @@ export const suggestAutomationFlow = async (req, res) => {
       platformRules = '\n  - CRITICAL: You MUST NOT use the "form_flow" node. It is strictly for WhatsApp only.';
     }
 
-    const prompt = `You are an expert ${platform === 'all' ? 'Omnichannel' : platform} automation architect. Create a highly cohesive and professional automation flow sequence using the details below.
+    const capabilitiesRules = `
+-----------------------------------------------------------
+SUPPORTED PLATFORM CAPABILITIES & LIMITS (STRICT CONSTRAINTS)
+Available Nodes: ${PLATFORM_CAPABILITIES.platform.supportedNodes.map(n => `"${n}"`).join(', ')}
+Supported Variable Names (Save response fields): ${PLATFORM_CAPABILITIES.platform.supportedVariables.map(v => `"${v}"`).join(', ')}
+Supported Contact Fields (Update Contact updates field_key): ${PLATFORM_CAPABILITIES.platform.contactFields.map(f => `"${f}"`).join(', ')}
+
+META & PLATFORM LIMITS:
+- Quick Reply (button_message) MUST have a MAXIMUM of ${PLATFORM_CAPABILITIES.meta.quickReply.maxButtons} buttons. Do NOT exceed this.
+- Selection List (list_message) MUST have a MAXIMUM of ${PLATFORM_CAPABILITIES.meta.selectionList.maxRows} total rows. Do NOT exceed this.
+- You MUST only save variables into the supported variables list: ${PLATFORM_CAPABILITIES.platform.supportedVariables.join(', ')}. Do NOT invent custom ones.
+- When updating contact fields, use only key fields: ${PLATFORM_CAPABILITIES.platform.contactFields.join(', ')}.
+-----------------------------------------------------------
+`;
+
+    const prompt = `You are an expert ${platform === 'all' ? 'Omnichannel' : platform} automation flow architect. Create a highly cohesive and professional automation flow sequence using the details below.
 
 Business Name: ${businessName}
 Language: ${language}
@@ -1576,6 +2023,8 @@ Purpose: ${purpose}
 Action: ${action}
 Tone: ${tone}
 Additional Details: ${additionalDetails || "None provided"}
+
+${capabilitiesRules}
 
 Return the flow in the following JSON format ONLY:
 
@@ -1716,6 +2165,14 @@ STRICT RULES:
       console.error("Failed to parse AI generated flow", e);
     }
 
+    if (parsedData) {
+      const validationErrors = validateFlow(parsedData);
+      if (validationErrors.length > 0) {
+        console.log(`[AI Flow Builder] Flow has ${validationErrors.length} validation errors. Running Autofix...`);
+        parsedData = autoFixFlow(parsedData);
+      }
+    }
+
     return res.status(200).json({
       success: true,
       message: "Automation flow generated successfully",
@@ -1737,6 +2194,7 @@ export default {
   createAutomationFlow,
   updateAutomationFlow,
   deleteAutomationFlow,
+  cloneAutomationFlow,
   toggleAutomationFlow,
   togglePauseAutomationFlow,
   testAutomationFlow,
@@ -1745,5 +2203,6 @@ export default {
   getAutomationStatistics,
   getAvailableNodeTypes,
   preloadUserFlows,
+  getCapabilities,
   suggestAutomationFlow
 };

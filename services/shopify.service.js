@@ -42,6 +42,12 @@ export const stripHtml = (html) => {
 
 
 export const validateConfig = async (shopDomain, adminApiAccessToken) => {
+  if (adminApiAccessToken && adminApiAccessToken.startsWith('atkn_')) {
+    throw new Error(
+      "Invalid Token Format: You entered an App Automation Token ('atkn_...') from Shopify Dev Dashboard. Please enter a Store Admin API Access Token (starts with 'shpat_...'), generated from Shopify Store Admin (Settings -> Apps and sales channels -> Develop apps)."
+    );
+  }
+
   const normalizedDomain = normalizeDomain(shopDomain);
   const url = `https://${normalizedDomain}/admin/api/2024-10/shop.json`;
 

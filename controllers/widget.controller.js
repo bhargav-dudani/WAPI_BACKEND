@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
-import { Widget } from '../models/index.js';
+import { Widget, Setting } from '../models/index.js';
 import { deleteFile } from '../utils/aws-storage.js';
 
 function toBool(value) {
@@ -156,11 +156,20 @@ export const createWidget = async (req, res) => {
       whatsapp_phone_number: payload.whatsapp_phone_number,
       widget_image_url: widgetImageUrl,
       body_background_image: bodyBackgroundImage,
-      welcome_text: (payload.welcome_text ?? '').toString(),
+      welcome_text: payload.welcome_text !== undefined ? payload.welcome_text : undefined,
       default_open_popup: defaultOpenPopup,
-      default_user_message: (payload.default_user_message ?? '').toString(),
-      widget_position: (payload.widget_position ?? 'bottom-right').toString(),
-      widget_color: payload.widget_color ? String(payload.widget_color).trim() : null,
+      default_user_message: payload.default_user_message !== undefined ? payload.default_user_message : undefined,
+      widget_position: payload.widget_position !== undefined ? payload.widget_position : undefined,
+      widget_color: payload.widget_color ? String(payload.widget_color).trim() : undefined,
+      header_text: payload.header_text !== undefined ? payload.header_text : undefined,
+      header_text_color: payload.header_text_color !== undefined ? payload.header_text_color : undefined,
+      header_background_color: payload.header_background_color !== undefined ? payload.header_background_color : undefined,
+      body_background_color: payload.body_background_color !== undefined ? payload.body_background_color : undefined,
+      welcome_text_color: payload.welcome_text_color !== undefined ? payload.welcome_text_color : undefined,
+      welcome_text_background: payload.welcome_text_background !== undefined ? payload.welcome_text_background : undefined,
+      start_chat_button_text: payload.start_chat_button_text !== undefined ? payload.start_chat_button_text : undefined,
+      start_chat_button_background: payload.start_chat_button_background !== undefined ? payload.start_chat_button_background : undefined,
+      start_chat_button_text_color: payload.start_chat_button_text_color !== undefined ? payload.start_chat_button_text_color : undefined,
       deleted_at: null,
     };
 
@@ -377,10 +386,14 @@ export const getWidgetById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Widget not found' });
     }
 
+    const setting = await Setting.findOne({}).select('app_name').lean();
+    const app_name = setting?.app_name || 'Wapi';
+
     return res.status(200).json({
       success: true,
       data: {
         ...widget,
+        app_name,
         widget_image_url: buildAbsoluteUrl(req, widget.widget_image_url),
         body_background_image: buildAbsoluteUrl(req, widget.body_background_image),
         embed_code: buildWidgetEmbedCode(req, widget),

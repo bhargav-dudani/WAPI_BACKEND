@@ -473,6 +473,7 @@ async executeFunctionWithCollectedParams(functionDef, params, callLog) {
             headers: headers
         });
 
+        console.log("response.status", response.status);
 
         return {
             success: response.status >= 200 && response.status < 300,
@@ -1249,7 +1250,7 @@ async executeFunctionWithCollectedParams(functionDef, params, callLog) {
             const localSdp = pc.localDescription.sdp;
 
             const response = await axios.post(
-                `https://graph.facebook.com/v21.0/${phoneNumberId}/calls`,
+                `https://graph.facebook.com/${process.env.WHATSAPP_API_VERSION || 'v21.0'}/${phoneNumberId}/calls`,
                 {
                     messaging_product: 'whatsapp',
                     to: contactNumber,
@@ -1345,7 +1346,7 @@ async executeFunctionWithCollectedParams(functionDef, params, callLog) {
             const connected = await webrtcService.waitForConnection(waCallId);
             console.log(`[OutboundCall] WebRTC connection established: ${connected}`);
 
-
+      
             if (agent.nodes && agent.nodes.length > 0) {
                 console.log(`[OutboundCall] Executing first flow node for call ${waCallId}`);
                 await this.executeNode(callLog, agent, agent.nodes[0]?.id, waCallId);

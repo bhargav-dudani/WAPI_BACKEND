@@ -33,6 +33,11 @@ const contactSchema = new mongoose.Schema({
     index: true,
     sparse: true
   },
+  whatsapp_lid: {
+    type: String,
+    index: true,
+    sparse: true
+  },
   name: {
     type: String,
     required: true,

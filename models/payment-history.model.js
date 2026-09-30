@@ -26,7 +26,7 @@ const paymentHistorySchema = new mongoose.Schema({
     },
     payment_method: {
         type: String,
-        enum: ['card', 'upi', 'netbanking', 'wallet', 'manual', 'free', 'paypal', 'cash', 'bank_transfer'],
+        enum: ['card', 'upi', 'netbanking', 'wallet', 'manual', 'free', 'paypal', 'cash', 'bank_transfer', 'midtrans'],
         required: true
     },
     payment_status: {
@@ -40,7 +40,7 @@ const paymentHistorySchema = new mongoose.Schema({
     },
     payment_gateway: {
         type: String,
-        enum: ['stripe', 'razorpay', 'paypal', 'manual', 'free', 'admin generated'],
+        enum: ['stripe', 'razorpay', 'paypal', 'midtrans', 'mollie', 'manual', 'free', 'admin generated'],
         default: null
     },
     payment_response: {

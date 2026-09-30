@@ -36,6 +36,12 @@ const messageSchema = new mongoose.Schema({
     ref: 'User',
     default: null
   },
+  workspace_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Workspace',
+    default: null,
+    index: true
+  },
   contact_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Contact',

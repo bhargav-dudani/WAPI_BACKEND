@@ -14,7 +14,7 @@ import {
   getCatalogProductCount
 } from '../utils/ecommerce-catalog-service.js';
 import mongoose  from 'mongoose';
-const API_VERSION = 'v20.0';
+const API_VERSION = process.env.WHATSAPP_API_VERSION || 'v20.0';
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 10;
@@ -93,13 +93,67 @@ export const syncWABACatalogs = async (req, res) => {
     const response = await getWABACatalogsFromAPI(waba.business_id, waba.access_token);
     const catalogs = response.data || [];
 
+    // Fetch catalogs currently linked to this WABA from Meta API
+    let linkedCatalogsList = [];
+    try {
+      const linkedCatalogsUrl = `https://graph.facebook.com/${API_VERSION}/${waba.whatsapp_business_account_id}/product_catalogs`;
+      const linkedCatalogsResponse = await axios.get(linkedCatalogsUrl, {
+        headers: {
+          'Authorization': `Bearer ${waba.access_token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      linkedCatalogsList = linkedCatalogsResponse.data?.data || [];
+    } catch (linkedError) {
+      console.error('Error fetching linked catalogs list during sync:', linkedError.response?.data || linkedError.message);
+    }
+
+    // Sync all owned catalogs
     for (const catalogData of catalogs) {
       const productCount = await getCatalogProductCount(catalogData.id, waba.access_token);
 
-      await syncCatalogWithDatabase(catalogData.id, waba_id, userId, {
+      const catalog = await syncCatalogWithDatabase(catalogData.id, waba_id, userId, {
         ...catalogData,
         product_count: productCount
       });
+
+      const isCurrentlyLinkedOnMeta = linkedCatalogsList.some(c => c.id === catalogData.id);
+      if (catalog.is_linked !== isCurrentlyLinkedOnMeta) {
+        catalog.is_linked = isCurrentlyLinkedOnMeta;
+        await catalog.save();
+      }
+    }
+
+    // Sync any linked catalogs that were not in the owned catalogs list
+    for (const linkedCatalogData of linkedCatalogsList) {
+      const alreadySynced = catalogs.some(c => c.id === linkedCatalogData.id);
+      if (!alreadySynced) {
+        const productCount = await getCatalogProductCount(linkedCatalogData.id, waba.access_token);
+        const catalog = await syncCatalogWithDatabase(linkedCatalogData.id, waba_id, userId, {
+          ...linkedCatalogData,
+          product_count: productCount
+        });
+        if (!catalog.is_linked) {
+          catalog.is_linked = true;
+          await catalog.save();
+        }
+      }
+    }
+
+    // Unlink any database catalogs that are no longer linked on Meta
+    const dbLinkedCatalogs = await EcommerceCatalog.find({
+      user_id: userId,
+      waba_id: waba_id,
+      is_linked: true,
+      deleted_at: null
+    });
+
+    for (const dbCatalog of dbLinkedCatalogs) {
+      const isStillLinkedOnMeta = linkedCatalogsList.some(c => c.id === dbCatalog.catalog_id);
+      if (!isStillLinkedOnMeta) {
+        dbCatalog.is_linked = false;
+        await dbCatalog.save();
+      }
     }
 
     return res.json({
@@ -223,12 +277,45 @@ export const linkCatalogToWABA = async (req, res) => {
     }
     const linkedCatalog = await EcommerceCatalog.findById(catalog_id);
 
-  console.log("linkedCatalog", linkedCatalog.catalog_id);
-    const response = await linkCatalogToWABAFromAPI(
-      waba.whatsapp_business_account_id,
-      linkedCatalog.catalog_id,
-      waba.access_token
-    );
+    console.log("linkedCatalog", linkedCatalog.catalog_id);
+    
+    let response;
+    try {
+      response = await linkCatalogToWABAFromAPI(
+        waba.whatsapp_business_account_id,
+        linkedCatalog.catalog_id,
+        waba.access_token
+      );
+    } catch (linkError) {
+      const errorSubcode = linkError.response?.data?.error?.error_subcode;
+      const errorMessage = linkError.response?.data?.error?.message || '';
+      
+      if (errorSubcode === 2388099 || errorMessage.includes('2388099') || errorMessage.includes('linked to one WhatsApp Business account')) {
+        // Fetch catalogs linked to this WABA to verify if it's already linked to our target WABA
+        try {
+          const linkedCatalogsUrl = `https://graph.facebook.com/${API_VERSION}/${waba.whatsapp_business_account_id}/product_catalogs`;
+          const linkedCatalogsResponse = await axios.get(linkedCatalogsUrl, {
+            headers: {
+              'Authorization': `Bearer ${waba.access_token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          const linkedCatalogsList = linkedCatalogsResponse.data?.data || [];
+          const isLinked = linkedCatalogsList.some(c => c.id === linkedCatalog.catalog_id);
+          if (isLinked) {
+            console.log(`Catalog ${linkedCatalog.catalog_id} is already linked to WABA ${waba.whatsapp_business_account_id} on Meta API.`);
+            response = { success: true, already_linked: true };
+          } else {
+            throw linkError;
+          }
+        } catch (fetchError) {
+          console.error('Error verifying linked catalogs list:', fetchError.response?.data || fetchError.message);
+          throw linkError;
+        }
+      } else {
+        throw linkError;
+      }
+    }
 
     const catalogDetailsUrl = `https://graph.facebook.com/${API_VERSION}/${linkedCatalog.catalog_id}`;
     const catalogDetailsResponse = await axios.get(catalogDetailsUrl, {
@@ -257,8 +344,8 @@ export const linkCatalogToWABA = async (req, res) => {
     return res.status(500).json({
       success: false,
       error: 'Failed to link catalog to WABA',
-      message: error.response?.data.error.error_user_msg || error.message,
-      details: error.response?.data.error  || error.message
+      message: error.response?.data?.error?.error_user_msg || error.response?.data?.error?.message || error.message,
+      details: error.response?.data?.error || error.message
     });
   }
 };
@@ -481,8 +568,8 @@ export const getProductsFromCatalog = async (req, res) => {
     return res.status(500).json({
       success: false,
       error: 'Failed to get products from catalog',
-      message: error.response?.data.error.error_user_msg || error.message,
-      details: error.response?.data || error.message
+      message: error.response?.data?.error?.error_user_msg || error.response?.data?.error?.message || error.message,
+      details: error.response?.data?.error || error.message
     });
   }
 };
@@ -559,8 +646,8 @@ export const createProductInCatalog = async (req, res) => {
     return res.status(500).json({
       success: false,
       error: 'Failed to create product in catalog',
-      message: error.response?.data.error.error_user_msg || error.message,
-      details: error.response?.data || error.message
+      message: error.response?.data?.error?.error_user_msg || error.response?.data?.error?.message || error.message,
+      details: error.response?.data?.error || error.message
     });
   }
 };
@@ -632,6 +719,7 @@ export const getUserProducts = async (req, res) => {
   try {
     const userId = req.user.id;
     const { catalog_id } = req.query;
+    const workspaceId = req.headers['x-workspace-id'] || req.query.workspace_id;
 
     const { page, limit, skip } = parsePaginationParams(req.query);
     const { sortField, sortOrder } = parseSortParams(req.query);
@@ -649,6 +737,26 @@ export const getUserProducts = async (req, res) => {
 
     if (req.query.type) {
       baseFilter.type = req.query.type;
+    }
+
+    if (workspaceId) {
+      // Find WABAs in the current workspace
+      const wabas = await WhatsappWaba.find({ workspace_id: workspaceId, deleted_at: null }).select('_id');
+      const wabaIds = wabas.map(w => w._id);
+
+      // Find catalogs linked to these WABAs
+      const catalogs = await EcommerceCatalog.find({ waba_id: { $in: wabaIds }, deleted_at: null }).select('_id');
+      const catalogIds = catalogs.map(c => c._id);
+
+      if (baseFilter.catalog_id) {
+        // If a specific catalog_id is requested, ensure it belongs to the allowed catalogs
+        const isAllowed = catalogIds.some(id => id.toString() === baseFilter.catalog_id.toString());
+        if (!isAllowed) {
+          baseFilter.catalog_id = new mongoose.Types.ObjectId(); // dummy id that won't match anything
+        }
+      } else {
+        baseFilter.catalog_id = { $in: catalogIds };
+      }
     }
 
     const combinedFilter = { ...baseFilter, ...searchQuery };
@@ -736,8 +844,8 @@ export const deleteProductFromCatalog = async (req, res) => {
     return res.status(500).json({
       success: false,
       error: 'Failed to delete product from catalog',
-      message: error.response?.data.error.error_user_msg || error.message,
-      details: error.response?.data || error.message
+      message: error.response?.data?.error?.error_user_msg || error.response?.data?.error?.message || error.message,
+      details: error.response?.data?.error || error.message
     });
   }
 };
@@ -807,8 +915,8 @@ export const updateProductInCatalog = async (req, res) => {
     return res.status(500).json({
       success: false,
       error: 'Failed to update product in catalog',
-      message: error.response?.data.error.error_user_msg || error.message,
-      details: error.response?.data || error.message
+      message: error.response?.data?.error?.error_user_msg || error.response?.data?.error?.message || error.message,
+      details: error.response?.data?.error || error.message
     });
   }
 };

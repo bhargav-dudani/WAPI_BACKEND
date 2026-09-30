@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const FB_API_VERSION = 'v22.0';
+const FB_API_VERSION = process.env.WHATSAPP_API_VERSION || 'v22.0';
 
 class InstagramProvider {
 
@@ -206,7 +206,7 @@ class InstagramProvider {
 
             const response = await axios.post(url, null, {
                 params: {
-                    subscribed_fields: 'messages,messaging_postbacks,message_reactions,message_reads,comments',
+                    subscribed_fields: 'messages,messaging_postbacks,message_reactions,message_seen,comments',
                     access_token: pageAccessToken
                 }
             });

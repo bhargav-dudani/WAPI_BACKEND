@@ -11,8 +11,8 @@ import { getWhatsAppTypeFromMime, getWhatsAppMediaUrl } from "../utils/uploadMed
 import { saveBufferLocally, downloadAndStoreMedia } from "../utils/whatsapp-message-handler.js";
 import { callAIModel as commonCallAIModel } from '../utils/ai-utils.js';
 
-const API_VERSION = "v21.0";
-const UPDATE_API_VERSION = "v23.0";
+const API_VERSION = process.env.WHATSAPP_API_VERSION || "v21.0";
+const UPDATE_API_VERSION = process.env.WHATSAPP_API_VERSION || "v23.0";
 
 export const createTemplate = async (req, res) => {
   try {
@@ -39,6 +39,10 @@ export const createTemplate = async (req, res) => {
       platform = "whatsapp",
       save_as_draft = false
     } = req.body;
+
+    if (language === "pt") {
+      language = "pt_BR";
+    }
 
     if (typeof buttons === "string") {
       try {
@@ -555,7 +559,7 @@ function buildAuthenticationTemplatePayload(template) {
 
   return {
     name: template.template_name,
-    language: template.language,
+    language: template.language === "pt" ? "pt_BR" : (template.language || "en_US"),
     category: "AUTHENTICATION",
     components,
   };
@@ -757,7 +761,7 @@ export const buildMetaTemplatePayload = (template) => {
 
   return {
     name: template.template_name,
-    language: template.language,
+    language: template.language === "pt" ? "pt_BR" : (template.language || "en_US"),
     category: template.category,
     parameter_format: bodyVariables.length > 0 && bodyVariables.every((v) => /^\d+$/.test(v.key)) ? "positional" : "named",
     components,
@@ -815,7 +819,7 @@ function buildCarouselMetaTemplatePayload(template) {
 
   return {
     name: template.template_name,
-    language: template.language,
+    language: template.language === "pt" ? "pt_BR" : (template.language || "en_US"),
     category: (template.category || "MARKETING").toUpperCase(),
     components,
   };
@@ -832,6 +836,7 @@ export const submitTemplateToMeta = async (payload, WABA_ID, ACCESS_TOKEN) => {
       "Content-Type": "application/json",
     },
   });
+  console.log("response", response.data);
   return response.data;
 };
 
@@ -1623,6 +1628,10 @@ export const updateTemplate = async (req, res) => {
       carousel_cards,
       template_type,
     } = req.body;
+
+    if (language === "pt") {
+      language = "pt_BR";
+    }
 
     if (typeof carousel_cards === 'string') {
       try {

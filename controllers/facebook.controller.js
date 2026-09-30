@@ -5,7 +5,7 @@ import instagramProvider from '../services/messaging/providers/instagram.provide
 import crypto from 'crypto';
 import axios from 'axios';
 
-const FB_API_VERSION = 'v22.0';
+const FB_API_VERSION = process.env.WHATSAPP_API_VERSION || 'v22.0';
 
 
 export const fetchAllFacebookPages = async (accessToken, fbUserId, userId) => {
@@ -37,7 +37,16 @@ export const fetchAllFacebookPages = async (accessToken, fbUserId, userId) => {
     }
   }
 
+  const uniqueBusinesses = [];
+  const seenBusinessIds = new Set();
   for (const biz of businesses) {
+    if (biz.id && !seenBusinessIds.has(biz.id)) {
+      uniqueBusinesses.push(biz);
+      seenBusinessIds.add(biz.id);
+    }
+  }
+
+  for (const biz of uniqueBusinesses) {
     let bizPagesUrl = `https://graph.facebook.com/${FB_API_VERSION}/${biz.id}/owned_pages?access_token=${accessToken}&fields=id,name,access_token,category,picture.type(large),is_verified,business,instagram_business_account{id,username,name}&limit=100`;
     while (bizPagesUrl) {
       try {
@@ -175,7 +184,11 @@ export const handleFacebookCallback = async (req, res) => {
       }
 
       if (validPages.length > 0) {
-        await FacebookPage.deleteMany({ connection_id: connection._id });
+        if (hasValidWorkspace) {
+          await FacebookPage.deleteMany({ workspace_id: workspaceId });
+        } else {
+          await FacebookPage.deleteMany({ user_id: userId, workspace_id: null });
+        }
 
         const pageDocs = validPages.map(p => ({
           user_id: userId,
@@ -305,11 +318,22 @@ export const getFacebookPages = async (req, res) => {
     const pageQuery = hasValidWorkspace ? { workspace_id: workspaceId, is_active: true } : (connection ? { connection_id: connection._id, is_active: true } : { user_id: userId, is_active: true });
     let pages = await FacebookPage.find(pageQuery).select('-page_access_token').lean();
 
+    const uniquePages = [];
+    const seenPageIds = new Set();
+    for (const page of pages) {
+      if (page.page_id && !seenPageIds.has(page.page_id)) {
+        uniquePages.push(page);
+        seenPageIds.add(page.page_id);
+      }
+    }
+
     if (connection?.default_page_id) {
-      pages = pages.map(page => ({
+      pages = uniquePages.map(page => ({
         ...page,
         is_default: page._id.toString() === connection.default_page_id.toString()
       }));
+    } else {
+      pages = uniquePages;
     }
 
     return res.status(200).json({
@@ -343,7 +367,11 @@ export const syncFacebookPages = async (req, res) => {
     const validPages = pages.filter(p => !!p.access_token);
 
     if (validPages.length > 0) {
-      await FacebookPage.deleteMany({ connection_id: connection._id });
+      if (hasValidWorkspace) {
+        await FacebookPage.deleteMany({ workspace_id: workspaceId });
+      } else {
+        await FacebookPage.deleteMany({ user_id: userId, workspace_id: null });
+      }
 
       const pageDocs = validPages.map(p => ({
         user_id: userId,
@@ -521,10 +549,11 @@ export const syncLinkedSocialAccounts = async (req, res) => {
 export const updateFacebookDefaults = async (req, res) => {
   try {
     const userId = req.user.owner_id || req.user.id;
-    const { default_page_id, workspace_id } = req.body;
-    const hasValidWorkspace = workspace_id && mongoose.Types.ObjectId.isValid(workspace_id);
+    const { default_page_id } = req.body;
+    const workspaceId = req.body.workspace_id || req.query.workspace_id || req.headers['x-workspace-id'];
+    const hasValidWorkspace = workspaceId && mongoose.Types.ObjectId.isValid(workspaceId);
 
-    const query = hasValidWorkspace ? { workspace_id, is_active: true } : { user_id: userId, workspace_id: null, is_active: true };
+    const query = hasValidWorkspace ? { workspace_id: workspaceId, is_active: true } : { user_id: userId, workspace_id: null, is_active: true };
     const connection = await FacebookConnection.findOneAndUpdate(
       query,
       {

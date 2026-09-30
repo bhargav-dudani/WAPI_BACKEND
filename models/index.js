@@ -91,6 +91,7 @@ import Segment from './segment.model.js';
 import Guide from './guide.model.js';
 import SocialAutomation from './social-automation.model.js';
 import SocialMediaPost from './social-media-post.model.js';
+import SocialMediaConnection from './social-media-connection.model.js';
 import ProcessedSocialComment from './processed-social-comment.model.js';
 
 import Form from './formBuilder.model.js';
@@ -211,6 +212,7 @@ const db = {
   Guide,
   SocialAutomation,
   SocialMediaPost,
+  SocialMediaConnection,
   ProcessedSocialComment,
   ShopifyConfiguration,
   PlanSnippet,
@@ -252,5 +254,5 @@ export {
   FacebookLeadForm,
   FacebookLead,
   Segment,
-  Plan, Template, Webhook, Subscription, PaymentHistory, AIModel, AgentTask, AutomationFlow, AutomationExecution, TelegramConnection, FacebookConnection, InstagramConnection, TwitterConnection, ChatAssignment, Contact, CustomField, Tag, Attachment, Campaign, UserSetting, EcommerceCatalog, EcommerceProduct, EcommerceOrder, EcommerceOrderStatusTemplate, LandingPage, AuthPageSetup, ApiKey, Widget, ShortLink, ImportJob, ReplyMaterial, WorkingHours, Workspace, Sequence, SequenceStep, WabaConfiguration, Tax, GoogleAccount, GoogleCalendar, GoogleSheet, GoogleForm, QuickReply, QuickReplyFavorite, KanbanFunnel, KanbanItem, Guide, SocialAutomation, SocialMediaPost, ProcessedSocialComment, CookieConsentLog, ShopifyConfiguration, PlanSnippet, connectDB
+  Plan, Template, Webhook, Subscription, PaymentHistory, AIModel, AgentTask, AutomationFlow, AutomationExecution, TelegramConnection, FacebookConnection, InstagramConnection, TwitterConnection, ChatAssignment, Contact, CustomField, Tag, Attachment, Campaign, UserSetting, EcommerceCatalog, EcommerceProduct, EcommerceOrder, EcommerceOrderStatusTemplate, LandingPage, AuthPageSetup, ApiKey, Widget, ShortLink, ImportJob, ReplyMaterial, WorkingHours, Workspace, Sequence, SequenceStep, WabaConfiguration, Tax, GoogleAccount, GoogleCalendar, GoogleSheet, GoogleForm, QuickReply, QuickReplyFavorite, KanbanFunnel, KanbanItem, Guide, SocialAutomation, SocialMediaPost, SocialMediaConnection, ProcessedSocialComment, CookieConsentLog, ShopifyConfiguration, PlanSnippet, connectDB
 };

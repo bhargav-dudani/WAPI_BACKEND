@@ -11,10 +11,12 @@ router.use(authenticate);
 router.use(requireSubscription);
 
 router.get('/', checkPermission('view.automation_flows'), automationController.getAutomationFlows);
+router.get('/capabilities', checkPermission('view.automation_flows'), automationController.getCapabilities);
 router.get('/:flowId', checkPermission('view.automation_flows'), automationController.getAutomationFlow);
 router.post('/', checkPlanLimit('bot_flow'), checkPermission('create.automation_flows'), automationController.createAutomationFlow);
 router.put('/:flowId', checkPermission('update.automation_flows'), automationController.updateAutomationFlow);
 router.delete('/:flowId', checkPermission('delete.automation_flows'), automationController.deleteAutomationFlow);
+router.post('/:flowId/clone', checkPlanLimit('bot_flow'), checkPermission('create.automation_flows'), automationController.cloneAutomationFlow);
 router.patch('/:flowId/toggle', checkPermission('update.automation_flows'), automationController.toggleAutomationFlow);
 router.patch('/:flowId/toggle-pause', checkPermission('update.automation_flows'), automationController.togglePauseAutomationFlow);
 router.post('/:flowId/test', checkPermission('update.automation_flows'), automationController.testAutomationFlow);

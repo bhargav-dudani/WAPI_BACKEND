@@ -151,7 +151,7 @@ export const sendWhatsAppOTP = async (countryCode, phone, otp) => {
         type: "template",
         template: {
           name: template.template_name,
-          language: { code: template.language || 'en_US' },
+          language: { code: template.language === "pt" ? "pt_BR" : (template.language || 'en_US') },
           components: components
         }
       };
@@ -165,7 +165,7 @@ export const sendWhatsAppOTP = async (countryCode, phone, otp) => {
     }
 
     await axios.post(
-      `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`,
+      `https://graph.facebook.com/${process.env.WHATSAPP_API_VERSION || 'v20.0'}/${phoneNumberId}/messages`,
       payload,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );

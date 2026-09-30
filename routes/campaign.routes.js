@@ -24,4 +24,7 @@ router.post('/:id/send', checkPermission('create.campaigns'), campaignController
 router.post('/:id/toggle-pause', checkPermission('update.campaigns'), campaignController.togglePauseCampaign);
 router.post('/:id/setup-recurring', checkPermission('update.campaigns'), campaignController.setupRecurringCampaign);
 
+// Admin-only: Force-reset a stuck campaign (sending/pending → failed)
+router.post('/:id/admin-reset', authorizeRoles(['super_admin']), campaignController.adminResetCampaign);
+
 export default router;

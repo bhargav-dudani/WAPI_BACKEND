@@ -981,5 +981,9 @@
   "invalid_email": "Ungültige E-Mail-Adresse",
   "add_plan": "Neuen Plan hinzufügen",
   "settings_tabs_facebook_lead": "Facebook & Instagram",
-  "settings_tabs_facebook_lead_desc": "Lead-Webhook-Konfiguration"
+  "settings_tabs_facebook_lead_desc": "Lead-Webhook-Konfiguration",
+  "settings_tabs_signup_agreement": "Registrierungsanpassung",
+  "settings_tabs_signup_agreement_desc": "Konfigurieren Sie die Zeile und Seite für die Registrierungsvereinbarung",
+  "settings_tabs_social_media": "Social-Media-Einstellungen",
+  "settings_tabs_social_media_desc": "Anmeldedaten für die Veröffentlichung in sozialen Medien konfigurieren"
 }

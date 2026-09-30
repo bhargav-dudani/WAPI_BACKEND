@@ -95,11 +95,22 @@ function transcodeToWebp(inputBuffer) {
   });
 }
 
-const WHATSAPP_API_VERSION = 'v25.0';
+const WHATSAPP_API_VERSION = process.env.WHATSAPP_API_VERSION || 'v25.0';
 const WHATSAPP_GRAPH_API_APP_URL = 'https://graph.facebook.com';
 
 const globalMediaCache = new Map();
 const globalMediaUploadPromises = new Map();
+
+const safeTrim = (str, maxLength) => {
+  if (typeof str !== 'string') return str;
+  let cleanStr = str
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+  return cleanStr.length > maxLength ? cleanStr.slice(0, maxLength) : cleanStr;
+};
 
 const MESSAGE_TYPES = {
   TEXT: 'text',
@@ -134,6 +145,9 @@ export default class BusinessAPIProvider extends BaseProvider {
 
     switch (messageType) {
       case MESSAGE_TYPES.TEXT:
+        if (!messageText || !String(messageText).trim()) {
+          throw new Error('Message text body is required for text messages');
+        }
         payload.text = { body: messageText };
         break;
 
@@ -156,8 +170,8 @@ export default class BusinessAPIProvider extends BaseProvider {
       case MESSAGE_TYPES.AUDIO:
         payload.audio = {};
         if (mediaId) {
-          payload.audio.id = mediaId;
           console.log('[BusinessAPI] Audio payload using media ID:', mediaId);
+          payload.audio.id = mediaId;
         } else if (mediaUrl) {
           payload.audio.link = mediaUrl;
           console.log('[BusinessAPI] Audio payload using media URL:', mediaUrl);
@@ -199,6 +213,10 @@ export default class BusinessAPIProvider extends BaseProvider {
       case MESSAGE_TYPES.INTERACTIVE:
         const { interactiveType, buttonParams, listParams } = params;
 
+        if (!messageText || !String(messageText).trim()) {
+          throw new Error(`Body text is required for interactive ${interactiveType} message`);
+        }
+
         if (interactiveType === 'button') {
           payload.interactive = {
             type: 'button',
@@ -220,20 +238,20 @@ export default class BusinessAPIProvider extends BaseProvider {
             type: 'list',
             header: {
               type: 'text',
-              text: listParams?.header || 'Options'
+              text: safeTrim(listParams?.header || 'Options', 60)
             },
             body: {
-              text: messageText
+              text: safeTrim(messageText || listParams?.body || 'Please select an option', 1024)
             },
             action: {
-              button: listParams?.buttonTitle || 'Select',
+              button: safeTrim(listParams?.buttonTitle || 'Select', 20),
               sections: [
                 {
-                  title: listParams?.sectionTitle || 'Menu',
+                  title: safeTrim(listParams?.sectionTitle || 'Menu', 24),
                   rows: listParams?.items?.map((item, index) => ({
                     id: item.id || `item_${index}`,
-                    title: item.title,
-                    description: item.description || ''
+                    title: safeTrim(item.title, 24),
+                    description: safeTrim(item.description || '', 72)
                   })) || []
                 }
               ]
@@ -293,9 +311,14 @@ export default class BusinessAPIProvider extends BaseProvider {
       case MESSAGE_TYPES.TEMPLATE:
         const { templateName, languageCode, templateComponents } = params;
 
+        let normalizedLang = languageCode || params.language_code || 'en_US';
+        if (normalizedLang === 'pt') {
+          normalizedLang = 'pt_BR';
+        }
+
         payload.template = {
           name: templateName || params.template_name,
-          language: { code: languageCode || params.language_code || 'en_US' }
+          language: { code: normalizedLang }
         };
 
         if (templateComponents && templateComponents.length > 0) {
@@ -575,28 +598,54 @@ export default class BusinessAPIProvider extends BaseProvider {
 
     const appUrl = process.env.APP_URL || '';
 
-    if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
-      if (appUrl && filePath.includes('localhost')) {
+    let cleanPath = filePath.replace(/\\/g, '/');
+
+    if (cleanPath.startsWith('http://') || cleanPath.startsWith('https://')) {
+      if (appUrl && cleanPath.includes('localhost')) {
         try {
-          const urlObj = new URL(filePath);
+          const urlObj = new URL(cleanPath);
           const cleanAppUrl = appUrl.endsWith('/') ? appUrl.slice(0, -1) : appUrl;
           return `${cleanAppUrl}${urlObj.pathname}${urlObj.search}`;
         } catch (e) {
-          return filePath;
+          return cleanPath;
         }
       }
-      return filePath;
+      if (cleanPath.includes('/uploads/') && (cleanPath.includes('/opt/') || cleanPath.includes('/home/') || cleanPath.includes('//opt/') || cleanPath.includes('//home/'))) {
+        try {
+          const urlObj = new URL(cleanPath);
+          const uploadIndex = urlObj.pathname.indexOf('/uploads/');
+          if (uploadIndex !== -1) {
+            const cleanUploadPath = urlObj.pathname.substring(uploadIndex);
+            const domainBase = `${urlObj.protocol}//${urlObj.host}`;
+            return `${domainBase}${cleanUploadPath}${urlObj.search}`;
+          }
+        } catch (e) {
+          // Fallback if URL parsing fails
+        }
+      }
+      return cleanPath;
+    }
+
+    if (cleanPath.includes('/uploads/')) {
+      cleanPath = cleanPath.substring(cleanPath.indexOf('/uploads/'));
+    } else if (cleanPath.includes('uploads/')) {
+      cleanPath = cleanPath.substring(cleanPath.indexOf('uploads/'));
+      if (!cleanPath.startsWith('/')) cleanPath = '/' + cleanPath;
+    }
+
+    if (!cleanPath.startsWith('/')) {
+      cleanPath = '/' + cleanPath;
     }
 
     if (appUrl) {
-      const cleanPath = filePath.startsWith('/') ? filePath : `/${filePath}`;
       const cleanAppUrl = appUrl.endsWith('/') ? appUrl.slice(0, -1) : appUrl;
       return `${cleanAppUrl}${cleanPath}`;
     }
 
-    console.warn('[BusinessAPI] APP_URL not set, media URL may not be accessible:', filePath);
-    return filePath;
+    console.warn('[BusinessAPI] APP_URL not set, media URL may not be accessible:', cleanPath);
+    return cleanPath;
   }
+
 
   async sendMessage(userId, params, connection = null) {
     const {
@@ -768,14 +817,14 @@ export default class BusinessAPIProvider extends BaseProvider {
               image: mediaId ? { id: mediaId } : { link: finalMediaUrl }
             } : undefined,
             body: {
-              text: messageText || 'Please select an option'
+              text: safeTrim(messageText || 'Please select an option', 1024)
             },
             action: {
               buttons: (buttonParams || []).map((btn, index) => ({
                 type: 'reply',
                 reply: {
                   id: btn.id || `btn_${index}`,
-                  title: btn.title || `Button ${index + 1}`
+                  title: safeTrim(btn.title || `Button ${index + 1}`, 20)
                 }
               }))
             }
@@ -789,21 +838,21 @@ export default class BusinessAPIProvider extends BaseProvider {
         let sections;
         if (sectionsInput && Array.isArray(sectionsInput)) {
           sections = sectionsInput.map(section => ({
-            title: section.title || 'Options',
+            title: safeTrim(section.title || 'Options', 24),
             rows: (section.rows || []).map((row, i) => ({
               id: row.rowId || row.id || `row_${i}`,
-              title: row.title,
-              description: row.description || ''
+              title: safeTrim(row.title, 24),
+              description: safeTrim(row.description || '', 72)
             }))
           }));
         } else {
           sections = [
             {
-              title: sectionTitle || 'Options',
+              title: safeTrim(sectionTitle || 'Options', 24),
               rows: (items || []).map(item => ({
                 id: item.id,
-                title: item.title,
-                description: item.description || ''
+                title: safeTrim(item.title, 24),
+                description: safeTrim(item.description || '', 72)
               }))
             }
           ];
@@ -818,16 +867,16 @@ export default class BusinessAPIProvider extends BaseProvider {
             type: 'list',
             header: header ? {
               type: 'text',
-              text: header
+              text: safeTrim(header, 60)
             } : undefined,
             body: {
-              text: body || messageText || 'Please select an option'
+              text: safeTrim(body || messageText || 'Please select an option', 1024)
             },
             footer: footer ? {
-              text: footer
+              text: safeTrim(footer, 60)
             } : undefined,
             action: {
-              button: buttonTitle || 'Select',
+              button: safeTrim(buttonTitle || 'Select', 20),
               sections
             }
           }
@@ -862,15 +911,16 @@ export default class BusinessAPIProvider extends BaseProvider {
       }
 
       if (interactiveType === 'cta_url') {
+        const headerUrl = finalMediaUrl || (localFilePath ? this.getPublicMediaUrl(localFilePath) : null);
         whatsappPayload = {
           messaging_product: 'whatsapp',
           to: recipientNumber,
           type: 'interactive',
           interactive: {
             type: 'cta_url',
-            header: (mediaId || finalMediaUrl) ? {
+            header: headerUrl ? {
               type: 'image',
-              image: mediaId ? { id: mediaId } : { link: finalMediaUrl }
+              image: { link: headerUrl }
             } : undefined,
             body: {
               text: messageText
@@ -1013,7 +1063,9 @@ export default class BusinessAPIProvider extends BaseProvider {
         template_id: templateId || null,
         delivery_status: 'sent',
         wa_status: 'sent',
-        whatsapp_phone_number_id: params.whatsappPhoneNumber?._id || params.whatsappPhoneNumberId || null
+        whatsapp_phone_number_id: params.whatsappPhoneNumber?._id || params.whatsappPhoneNumberId || null,
+        whatsapp_connection_id: connection?._id || null,
+        workspace_id: connection?.workspace_id || null
       });
     }
 
@@ -1123,6 +1175,7 @@ export default class BusinessAPIProvider extends BaseProvider {
 
     const enrichedMessages = reversedMessages.map(message => ({
       ...message,
+      file_url: message.file_url ? this.getPublicMediaUrl(message.file_url) : message.file_url,
       can_chat: canChat,
       contact_id: contact ? contact._id.toString() : null
     }));

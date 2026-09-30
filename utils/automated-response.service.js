@@ -495,9 +495,61 @@ export const sendAutomatedReply = async (params) => {
                     agentInstructions += `\n- "action": (string) Always null.`;
                 }
 
-                const fullPrompt = `${chatbot.system_prompt || ''}${agentInstructions}\n\nCustomer: ${incomingText}`;
+                let systemPromptToUse = chatbot.system_prompt || '';
 
-                let aiResponseText = await callAIModel(userId, chatbot.ai_model, chatbot.api_key, fullPrompt);
+                const business_name = chatbot.business_name || '';
+                const business_description = chatbot.business_description || '';
+                const tone = chatbot.tone || 'professional';
+                const training_data = chatbot.training_data || [];
+                const raw_training_text = chatbot.raw_training_text || '';
+
+                let livePrompt = `You are an AI assistant for ${business_name || 'our business'}.\n`;
+                if (tone) livePrompt += `\nYour communication tone must be: ${tone}.\n`;
+                if (business_description) livePrompt += `\nBusiness Description:\n${business_description}\n`;
+                if (training_data && training_data.length > 0) {
+                    livePrompt += `\nHere are Frequently Asked Questions and their exact answers to guide your responses:\n`;
+                    training_data.forEach((item, index) => {
+                        if (item && item.question && item.answer) {
+                            livePrompt += `${index + 1}. Q: ${item.question}\n   A: ${item.answer}\n`;
+                        }
+                    });
+                }
+                if (raw_training_text) {
+                    livePrompt += `\nAdditional Business Knowledge Base & Context:\n${raw_training_text}\n`;
+                }
+                if (systemPromptToUse && !livePrompt.includes(systemPromptToUse)) {
+                    livePrompt += `\nCustom Instructions:\n${systemPromptToUse}\n`;
+                }
+                livePrompt += `\nRules:\n- Be professional, polite, and helpful.\n- Detect the language of the customer's message (e.g. English, Arabic) and ALWAYS respond in that exact language.\n- You MUST answer the customer's question directly using the Business Description, Q&A pairs, Additional Context, and Custom Instructions provided above.\n- If a Q&A pair, business description, or trained context directly addresses the customer's question (e.g. refund policy, pricing, services, working hours, etc.), provide a clear, accurate, and direct reply based strictly on that information. Do NOT reply with a generic greeting like "Hello! How can I help you today?" when a specific question is asked.\n- If the customer's question is NOT covered in the provided knowledge base, state politely that you do not have that specific information in your trained knowledge base, but provide helpful guidance or let them know a representative can assist them.\n- Keep your responses concise, direct, and natural.`;
+
+                systemPromptToUse = livePrompt;
+
+                const fullPrompt = `${systemPromptToUse}${agentInstructions}\n\n--- CUSTOMER MESSAGE ---\n${incomingText}`;
+
+                let aiResponseText = '';
+                try {
+                    aiResponseText = await callAIModel(userId, chatbot.ai_model, chatbot.api_key, fullPrompt);
+                } catch (aiErr) {
+                    console.error('[Chatbot Error] AI Model API call failed:', aiErr.message);
+                    let matchedQaAnswer = null;
+                    if (chatbot.training_data && chatbot.training_data.length > 0) {
+                        const lowerInput = incomingText.toLowerCase().trim();
+                        const cleanInput = lowerInput.replace(/[^\w\s]/gi, '');
+                        const matchedQa = chatbot.training_data.find(qa => {
+                            if (!qa || !qa.question) return false;
+                            const cleanQ = qa.question.toLowerCase().trim().replace(/[^\w\s]/gi, '');
+                            return cleanInput.includes(cleanQ) || cleanQ.includes(cleanInput);
+                        });
+                        if (matchedQa && matchedQa.answer) {
+                            matchedQaAnswer = matchedQa.answer;
+                        }
+                    }
+                    if (matchedQaAnswer) {
+                        aiResponseText = JSON.stringify({ reply_text: matchedQaAnswer, needs_handoff: false, action: null });
+                    } else {
+                        aiResponseText = JSON.stringify({ reply_text: "I am having trouble connecting to the AI assistant right now. An agent will be with you shortly.", needs_handoff: false, action: null });
+                    }
+                }
                 let aiResponseObj;
                 
                 try {
@@ -526,6 +578,84 @@ export const sendAutomatedReply = async (params) => {
                 }
 
                 let finalReplyText = aiResponseObj.reply_text || "I'm having trouble processing that right now.";
+
+                const isGenericGreetingReply = /^(hello|hi|hey|greetings|how (can|may) i help (you|u)|good (day|morning|afternoon|evening))\b/i.test(finalReplyText.trim()) || /how can i help you today/i.test(finalReplyText.trim());
+                const isSimpleGreetingInput = /^(hi|hello|hey|good morning|good afternoon|good evening|hey there|hola|marhaba|salam)\b/i.test(incomingText.trim());
+
+                if (isGenericGreetingReply && !isSimpleGreetingInput) {
+                    const lowerInput = incomingText.toLowerCase().trim();
+                    const cleanInput = lowerInput.replace(/[^\w\s]/gi, '');
+                    const keywords = cleanInput.split(/\s+/).filter(w => w.length > 2);
+
+                    let overriddenText = null;
+
+                    // 1. Try matching Q&A pairs first
+                    if (chatbot.training_data && chatbot.training_data.length > 0) {
+                        const matchedQa = chatbot.training_data.find(qa => {
+                            if (!qa || !qa.question) return false;
+                            const cleanQ = qa.question.toLowerCase().trim().replace(/[^\w\s]/gi, '');
+                            return cleanInput.includes(cleanQ) || cleanQ.includes(cleanInput) || keywords.some(kw => cleanQ.includes(kw));
+                        });
+                        if (matchedQa && matchedQa.answer) {
+                            overriddenText = matchedQa.answer;
+                        }
+                    }
+
+                    // 2. Try searching raw_training_text (General Text) if Q&A didn't match
+                    if (!overriddenText && raw_training_text) {
+                        const lines = raw_training_text.split(/\n+/);
+                        let bestBlock = null;
+                        let highestMatches = 0;
+
+                        for (let i = 0; i < lines.length; i++) {
+                            const line = lines[i].trim();
+                            if (!line) continue;
+                            const lowerLine = line.toLowerCase();
+                            
+                            let matchCount = 0;
+                            for (const kw of keywords) {
+                                if (lowerLine.includes(kw)) {
+                                    matchCount++;
+                                    
+                                }
+                            }
+
+                            if (matchCount > highestMatches) {
+                                highestMatches = matchCount;
+                                let contextBlock = line;
+                                if (i + 1 < lines.length && lines[i + 1].trim()) {
+                                    contextBlock += '\n' + lines[i + 1].trim();
+                                }
+                                bestBlock = contextBlock;
+                            }
+                        }
+
+                        if (bestBlock && highestMatches > 0) {
+                            overriddenText = bestBlock; 
+                        }
+                    }
+
+                    // 3. Try searching business_description if still no match
+                    if (!overriddenText && business_description) {
+                        const cleanDesc = business_description.toLowerCase();
+                        if (keywords.some(kw => cleanDesc.includes(kw))) {
+                            overriddenText = business_description;
+                        }
+                    }
+
+                    if (overriddenText) {
+                        console.log(`[Chatbot] Generic greeting override triggered. Found matching answer in knowledge base.`);
+                        finalReplyText = overriddenText;
+                    } else {
+                        console.log(`[Chatbot] Out of context question detected. Overriding generic greeting with helpful response.`);
+                        const isArabic = /[\u0600-\u06FF]/.test(incomingText);
+                        if (isArabic) {
+                            finalReplyText = "عذراً، لا أملك معلومات محددة حول هذا الاستفسار في قاعدة البيانات الحالية. سيقوم أحد ممثلي الدعم بمساعدتك قريباً.";
+                        } else {
+                            finalReplyText = "I don't have specific details regarding this in my trained knowledge base. A support agent will be with you shortly to assist you!";
+                        }
+                    }
+                }
 
                 if (chatbot.enable_google_meet && aiResponseObj.action === 'generate_google_meet') {
                     try {

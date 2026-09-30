@@ -96,10 +96,10 @@ const initializeQueueSystem = async () => {
             },
             {
                 connection: _redisConnection,
-                concurrency: 15,
+                concurrency: 1,
                 limiter: {
-                    max: 15,
-                    duration: 1000,
+                    max: 1,
+                    duration: 1500,
                 },
             }
         );

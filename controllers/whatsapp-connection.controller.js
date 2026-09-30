@@ -10,7 +10,7 @@ import path from 'path';
 import axios from 'axios';
 
 
-const WHATSAPP_API_VERSION = 'v19.0';
+const WHATSAPP_API_VERSION = process.env.WHATSAPP_API_VERSION || 'v19.0';
 const WHATSAPP_GRAPH_API_APP_URL = 'https://graph.facebook.com';
 
 const MESSAGE_TYPES = {

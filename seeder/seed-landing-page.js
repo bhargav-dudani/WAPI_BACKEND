@@ -7,7 +7,7 @@ const LATEST_LANDING_DATA = {
       {
         title: "Home",
         link_type: "Link",
-        path: "/landing",
+        path: "/",
         status: true
       },
       {
@@ -36,14 +36,12 @@ const LATEST_LANDING_DATA = {
           { title: "Appointment Booking", link_type: "Link", path: "/product/appointment_booking", description: "Let customers self-book appointments", status: true, icon: "Calendar" },
           { title: "WhatsApp Forms", link_type: "Link", path: "/product/whatsapp_forms", description: "Collect responses via chat forms", status: true, icon: "FileText" },
           { title: "Click-to-WhatsApp Ads", link_type: "Link", path: "/product/ctwa", description: "Drive ad traffic to WhatsApp conversations", status: true, icon: "Sparkles" },
-          { title: "Ecommerce Integration", link_type: "Link", path: "/product/ecommerce", description: "Sync Shopify, WooCommerce & more", status: true, icon: "ShoppingCart" },
-          { title: "CRM & Contacts", link_type: "Link", path: "/product/contacts", description: "Segment, tag, and manage contacts", status: true, icon: "Users" }
         ]
       },
       {
         title: "Pricing",
         link_type: "Link",
-        path: "/landing#pricing",
+        path: "/#pricing",
         status: true
       }
     ]

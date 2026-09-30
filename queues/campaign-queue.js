@@ -80,10 +80,10 @@ const initializeQueueSystem = () => {
       },
       {
         connection: _redisConnection,
-        concurrency: 15,
+        concurrency: 1,
         limiter: {
-          max: 15,
-          duration: 1000,
+          max: 1,
+          duration: 1500,
         },
       }
     );
@@ -105,8 +105,24 @@ const initializeQueueSystem = () => {
 
     _campaignQueue = {
       add: async (name, data, options) => {
-        console.warn('Redis not available. Running campaign job synchronously:', name);
+        console.warn('Redis not available. Scheduling campaign job asynchronously:', name);
+        const { processCampaignMessageJob } = await import('../utils/campaign-job-processor.js');
+        setTimeout(() => {
+          processCampaignMessageJob(data).catch(e => console.error('[Fallback] Job failed:', e.message));
+        }, 0);
         return { id: Math.random().toString(36).substr(2, 9) };
+      },
+      addBulk: async (jobs) => {
+        console.warn('Redis not available. Scheduling', jobs.length, 'campaign jobs asynchronously');
+        const { processCampaignMessageJob } = await import('../utils/campaign-job-processor.js');
+        let delay = 0;
+        for (const job of jobs) {
+          setTimeout(() => {
+            processCampaignMessageJob(job.data).catch(e => console.error('[Fallback] Bulk job failed:', e.message));
+          }, delay);
+          delay += 50; // stagger jobs by 50ms to keep main thread 100% smooth
+        }
+        return jobs.map(() => ({ id: Math.random().toString(36).substr(2, 9) }));
       }
     };
 

@@ -984,6 +984,8 @@
   "settings_tabs_facebook_lead_desc": "Lead webhook configuration",
   "settings_tabs_signup_agreement": "Signup Customization",
   "settings_tabs_signup_agreement_desc": "Signup agree line customization",
+  "settings_tabs_social_media": "Social Media Settings",
+  "settings_tabs_social_media_desc": "Configure social media publishing credentials",
   "settings_signup_agreement_title": "Signup Agreement Customization",
   "settings_signup_agreement_description": "Customize the signup agreement line and linked page on the user signup page.",
   "settings_signup_agreement_enable_label": "Enable Signup Agreement Line",

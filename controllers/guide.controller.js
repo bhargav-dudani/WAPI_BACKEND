@@ -1,5 +1,6 @@
 import { Guide } from '../models/index.js';
 import mongoose from 'mongoose';
+import { deleteOrphanFiles } from '../utils/aws-storage.js';
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 10;
@@ -165,6 +166,7 @@ export const updateGuide = async (req, res) => {
         if (!guide) {
             return res.status(404).json({ success: false, message: 'Guide not found' });
         }
+        const oldGuideObj = guide.toObject();
 
         if (title) {
             const finalCategory = category || guide.category;
@@ -212,6 +214,7 @@ export const updateGuide = async (req, res) => {
         guide.updated_by = req?.user?._id || null;
 
         await guide.save();
+        await deleteOrphanFiles(oldGuideObj, guide.toObject());
 
         return res.status(200).json({
             success: true,
@@ -290,6 +293,7 @@ export const deleteGuide = async (req, res) => {
             if (!guide) {
                 return res.status(404).json({ success: false, message: 'Guide not found' });
             }
+            await deleteOrphanFiles(guide.toObject(), {});
 
             const remainingGuides = await Guide.find({ category: guide.category }).sort({ order: 1 });
             const bulkOps = remainingGuides.map((g, index) => ({
@@ -309,10 +313,15 @@ export const deleteGuide = async (req, res) => {
         }
 
         if (slug) {
+            const guidesToDelete = await Guide.find({ slug: slug.toLowerCase() });
             const result = await Guide.deleteMany({ slug: slug.toLowerCase() });
 
             if (result.deletedCount === 0) {
                 return res.status(404).json({ success: false, message: 'No guides found for this category' });
+            }
+
+            for (const g of guidesToDelete) {
+                await deleteOrphanFiles(g.toObject(), {});
             }
 
             const allGuides = await Guide.aggregate([

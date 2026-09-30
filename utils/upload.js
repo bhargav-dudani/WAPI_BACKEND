@@ -60,6 +60,17 @@ function ensureDirExists(dirPath) {
   if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
 };
 
+const formatLocalFilePath = (file) => {
+  let rawPath = file.path ? file.path.replace(/\\/g, '/') : path.join(file.destination, file.filename).replace(/\\/g, '/');
+  if (rawPath.includes('/uploads/')) {
+    return rawPath.substring(rawPath.indexOf('/uploads/'));
+  }
+  if (rawPath.includes('uploads/')) {
+    return '/' + rawPath.substring(rawPath.indexOf('uploads/'));
+  }
+  return rawPath.startsWith('/') ? rawPath : '/' + rawPath;
+};
+
 const baseUploadDir = './uploads/';
 ensureDirExists(baseUploadDir);
 
@@ -108,11 +119,25 @@ async function getDynamicSettings(req = null) {
   }
 
   const allowedTypes = setting?.allowed_file_upload_types || [];
+
+  const getFileLimitMB = (type, defaultLimit) => {
+    if (req && req.user && !req.user.isSelfTenant && planFeatures) {
+      const planLimit = planFeatures[`${type}_file_limit`] || planFeatures[`${type}_limit`] || planFeatures[type];
+      if (planLimit !== undefined && planLimit !== null && planLimit !== '') {
+        const val = Number(planLimit);
+        if (val > 0) {
+          return val;
+        }
+      }
+    }
+    return setting?.[`${type}_file_limit`] || defaultLimit;
+  };
+
   const limits = {
-    document: (setting?.document_file_limit || 10) * 1024 * 1024,
-    audio: (setting?.audio_file_limit || 10) * 1024 * 1024,
-    video: (setting?.video_file_limit || 10) * 1024 * 1024,
-    image: (setting?.image_file_limit || 5) * 1024 * 1024,
+    document: getFileLimitMB('document', 10) * 1024 * 1024,
+    audio: getFileLimitMB('audio', 10) * 1024 * 1024,
+    video: getFileLimitMB('video', 10) * 1024 * 1024,
+    image: getFileLimitMB('image', 5) * 1024 * 1024,
     file: 25 * 1024 * 1024,
     multiple: planFeatures?.multiple_file_share_limit || setting?.multiple_file_share_limit || 10
   };
@@ -128,7 +153,8 @@ function createUploader(subfolder = '') {
       cb(null, uploadPath);
     },
     filename: (req, file, cb) => {
-      const ext = mimeToExtension[file.mimetype] || path.extname(file.originalname) || '.bin';
+      let ext = mimeToExtension[file.mimetype] || path.extname(file.originalname) || 'bin';
+      if (ext.startsWith('.')) ext = ext.slice(1);
       const typePrefix = getTypePrefix(file.mimetype);
       const timestamp = Date.now();
       const randomString = Math.random().toString(36).substring(2, 8);
@@ -345,12 +371,12 @@ function uploader(subfolder = '') {
               }
             } else {
               for (const file of files) {
-                file.path = `/${file.destination}/${file.filename}`.replace(/\\/g, '/');
+                file.path = formatLocalFilePath(file);
               }
             }
           } else {
             for (const file of files) {
-              file.path = path.join(file.destination, file.filename).replace(/\\/g, '/');
+              file.path = formatLocalFilePath(file);
             }
           }
           next();
@@ -444,12 +470,12 @@ const uploadFiles = (subfolder = '', fieldName = 'files') => {
           }
         } else {
           for (const file of req.files) {
-            file.path = path.join(file.destination, file.filename).replace(/\\/g, '/');
+            file.path = formatLocalFilePath(file);
           }
         }
       } else {
         for (const file of req.files) {
-          file.path = path.join(file.destination, file.filename).replace(/\\/g, '/');
+          file.path = formatLocalFilePath(file);
         }
       }
       next();
@@ -525,14 +551,14 @@ const uploadSingle = (subfolder = '', fieldName = 'file', isStatus = false) => {
               if (fs.existsSync(localPath) && subfolder !== 'imports') fs.unlinkSync(localPath);
             } catch (e) {
               console.error("S3 Upload failed, falling back to local storage", e);
-              file.path = path.join(file.destination, file.filename).replace(/\\/g, '/');
+              file.path = formatLocalFilePath(file);
               file.is_s3 = false;
             }
           } else {
-            file.path = path.join(file.destination, file.filename).replace(/\\/g, '/');
+            file.path = formatLocalFilePath(file);
           }
         } else {
-          file.path = path.join(file.destination, file.filename).replace(/\\/g, '/');
+          file.path = formatLocalFilePath(file);
         }
       }
 

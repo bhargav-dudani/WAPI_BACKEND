@@ -981,5 +981,9 @@
   "invalid_email": "عنوان بريد إلكتروني غير صالح",
   "add_plan": "إضافة خطة جديدة",
   "settings_tabs_facebook_lead": "Facebook & Instagram",
-  "settings_tabs_facebook_lead_desc": "تكوين ويب هوك الرصاص"
+  "settings_tabs_facebook_lead_desc": "تكوين ويب هوك الرصاص",
+  "settings_tabs_signup_agreement": "تخصيص التسجيل",
+  "settings_tabs_signup_agreement_desc": "تكوين سطر وصفحة اتفاقية التسجيل",
+  "settings_tabs_social_media": "إعدادات وسائل التواصل الاجتماعي",
+  "settings_tabs_social_media_desc": "تكوين بيانات اعتماد النشر على وسائل التواصل الاجتماعي"
 }

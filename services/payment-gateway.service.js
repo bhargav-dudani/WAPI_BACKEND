@@ -17,6 +17,8 @@ class PaymentGatewayService {
         return this._registerStripeWebhook(gatewayConfig.credentials, webhookUrl);
       case 'paypal':
         return this._registerPaypalWebhook(gatewayConfig.credentials, webhookUrl);
+      case 'midtrans':
+        return this._registerMidtransWebhook(gatewayConfig.credentials, webhookUrl);
       default:
         throw new Error(`Unsupported gateway: ${gatewayConfig.gateway}`);
     }
@@ -37,6 +39,9 @@ class PaymentGatewayService {
         case 'paypal':
           await this._unregisterPaypalWebhook(gatewayConfig.credentials, gatewayConfig.webhook_id);
           break;
+        case 'midtrans':
+          await this._unregisterMidtransWebhook(gatewayConfig.credentials, gatewayConfig.webhook_id);
+          break;
       }
     } catch (err) {
       console.error(`[PaymentGatewayService] Failed to unregister webhook for ${gatewayConfig.gateway}:`, err.message);
@@ -52,6 +57,8 @@ class PaymentGatewayService {
         return this._createStripeLink(gatewayConfig.credentials, payload);
       case 'paypal':
         return this._createPaypalLink(gatewayConfig.credentials, payload);
+      case 'midtrans':
+        return this._createMidtransLink(gatewayConfig.credentials, payload);
       default:
         throw new Error(`Unsupported gateway: ${gatewayConfig.gateway}`);
     }
@@ -66,6 +73,8 @@ class PaymentGatewayService {
           return this._verifyStripeSignature(rawBody, signature, secret);
         case 'paypal':
           return this._verifyPaypalSignature(rawBody, signature, secret);
+        case 'midtrans':
+          return this._verifyMidtransSignature(rawBody, signature, secret);
         default:
           return false;
       }
@@ -92,6 +101,9 @@ class PaymentGatewayService {
       case 'paypal': {
         const token = await this._getPaypalToken(gatewayConfig.credentials);
         return { gateway: 'paypal', status: 'ok', info: { mode: gatewayConfig.credentials.mode, token_type: 'Bearer' } };
+      }
+      case 'midtrans': {
+        return this._testMidtransConnection(gatewayConfig.credentials);
       }
       default:
         throw new Error(`Unsupported gateway: ${gatewayConfig.gateway}`);
@@ -377,6 +389,76 @@ class PaymentGatewayService {
 
   _generateWebhookSecret(length = 32) {
     return crypto.randomBytes(length).toString('hex');
+  }
+
+  async _registerMidtransWebhook(creds, webhookUrl) {
+    return {
+      webhook_id: 'manual',
+      webhook_secret: creds.server_key,
+      webhook_url: webhookUrl
+    };
+  }
+
+  async _unregisterMidtransWebhook(creds, webhookId) {
+    // Midtrans webhooks are manually configured in dashboard
+  }
+
+  async _createMidtransLink(creds, payload) {
+    const isSandbox = creds.mode === 'sandbox';
+    const baseUrl = isSandbox ? 'https://app.sandbox.midtrans.com/snap/v1/transactions' : 'https://app.midtrans.com/snap/v1/transactions';
+    const authString = Buffer.from(creds.server_key + ':').toString('base64');
+    
+    const response = await axios.post(baseUrl, {
+      transaction_details: {
+        order_id: payload.reference?.toString() || crypto.randomBytes(8).toString('hex'),
+        gross_amount: Math.round(payload.amount)
+      },
+      customer_details: {
+        first_name: payload.customer?.name || 'Customer',
+        email: payload.customer?.email || 'customer@example.com'
+      },
+      credit_card: { secure: true }
+    }, {
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${authString}`
+      }
+    });
+
+    return {
+      gateway_order_id: response.data.token,
+      payment_link: response.data.redirect_url,
+      raw: response.data
+    };
+  }
+
+  _verifyMidtransSignature(rawBody, signature, secret) {
+    try {
+      const body = typeof rawBody === 'string' ? JSON.parse(rawBody) : rawBody;
+      const { order_id, status_code, gross_amount, signature_key } = body;
+      const expected = crypto.createHash('sha512').update(`${order_id}${status_code}${gross_amount}${secret}`).digest('hex');
+      return expected === signature_key;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  async _testMidtransConnection(creds) {
+    const isSandbox = creds.mode === 'sandbox';
+    const baseUrl = isSandbox ? 'https://api.sandbox.midtrans.com/v1/payment-links/test-invalid-id' : 'https://api.midtrans.com/v1/payment-links/test-invalid-id';
+    const authString = Buffer.from(creds.server_key + ':').toString('base64');
+    
+    try {
+      await axios.get(baseUrl, {
+        headers: { 'Authorization': `Basic ${authString}` }
+      });
+    } catch (err) {
+      if (err.response && err.response.status === 401) {
+        throw new Error('Invalid Midtrans server key');
+      }
+    }
+    return { gateway: 'midtrans', status: 'ok', info: { mode: creds.mode } };
   }
 }
 

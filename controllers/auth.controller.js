@@ -147,7 +147,23 @@ const sendOTPEmail = async (email, otp, userName = 'User') => {
 };
 
 const finalizeUserCreation = async (pendingUser, isSmtpConfigured = true) => {
-  const user = await User.create(pendingUser);
+  let user = await User.findOne({ email: pendingUser.email });
+  if (user) {
+    user.name = pendingUser.name;
+    user.country_code = pendingUser.country_code;
+    user.phone = pendingUser.phone;
+    user.role_id = pendingUser.role_id;
+    user.password = pendingUser.password;
+    user.storage_limit = pendingUser.storage_limit;
+    user.is_verified = pendingUser.is_verified;
+    user.phone_verified = pendingUser.phone_verified;
+    user.email_verified = pendingUser.email_verified;
+    user.deleted_at = null;
+    user.status = true;
+    await user.save();
+  } else {
+    user = await User.create(pendingUser);
+  }
 
   if (isSmtpConfigured) {
     try {
@@ -186,11 +202,21 @@ const finalizeUserCreation = async (pendingUser, isSmtpConfigured = true) => {
     if (userWithRole && userWithRole.role_id && userWithRole.role_id.name === 'user') {
       const settings = await Setting.findOne().sort({ created_at: -1 });
       if (settings && settings.free_trial_enabled && settings.free_trial_days > 0) {
-        const trialPlan = await Plan.findOne({
-          billing_cycle: 'free Trial',
-          is_active: true,
-          deleted_at: null
-        });
+        let trialPlan = null;
+        if (settings.free_trial_plan_id) {
+          trialPlan = await Plan.findOne({
+            _id: settings.free_trial_plan_id,
+            is_active: true,
+            deleted_at: null
+          });
+        }
+        if (!trialPlan) {
+          trialPlan = await Plan.findOne({
+            billing_cycle: 'free Trial',
+            is_active: true,
+            deleted_at: null
+          });
+        }
 
         if (trialPlan) {
           const trialEndsAt = new Date();

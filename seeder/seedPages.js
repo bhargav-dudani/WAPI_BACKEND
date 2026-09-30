@@ -6,7 +6,32 @@ async function seedPages() {
       {
         title: 'Privacy Policy',
         slug: 'privacy-policy',
-        content: '<h1>Privacy Policy</h1><p>This is the default Privacy Policy content. Please update it in the admin panel.</p>',
+        content: `<div class="space-y-6 text-gray-600 max-w-4xl mx-auto py-8">
+  <div class="border-b border-gray-200 pb-5 mb-8">
+    <h1 class="text-3xl md:text-4xl font-extrabold text-gray-900 tracking-tight">Privacy Policy of Wapi</h1>
+  </div>
+  <div class="space-y-8">
+    <section>
+      <p class="text-base leading-relaxed text-gray-700 mb-4">Wapi operates the Wapi website, which provides the Wapi Service.</p>
+      <p class="text-base leading-relaxed text-gray-700 mb-4">This page is used to inform website visitors regarding our policies with the collection, use, and disclosure of Personal Information if anyone decided to use our Service, the Wapi website.</p>
+      <p class="text-base leading-relaxed text-gray-700 mb-4">If you choose to use our Service, then you agree to the collection and use of information in relation with this policy. The Personal Information that we collect are used for providing and improving the Service. We will not use or share your information with anyone except as described in this Privacy Policy.</p>
+      <p class="text-base leading-relaxed text-gray-700 mb-4">The terms used in this Privacy Policy have the same meanings as in our Terms and Conditions, which is accessible at wapi.com, unless otherwise defined in this Privacy Policy.</p>
+    </section>
+    <section>
+      <h2 class="text-2xl font-bold text-gray-900 mb-4">Information Collection and Use</h2>
+      <p class="text-base leading-relaxed text-gray-700">For a better experience while using our Service, we may require you to provide us with certain personally identifiable information, including but not limited to your name, phone number, and postal address. The information that we collect will be used to contact or identify you.</p>
+    </section>
+    <section>
+      <h2 class="text-2xl font-bold text-gray-900 mb-4">Log Data</h2>
+      <p class="text-base leading-relaxed text-gray-700">We want to inform you that whenever you visit our Service, we collect information that your browser sends to us that is called Log Data. This Log Data may include information such as your computer's Internet Protocol ("IP") address, browser version, pages of our Service that you visit, the time and date of your visit, the time spent on those pages, and other statistics.</p>
+    </section>
+    <section>
+      <h2 class="text-2xl font-bold text-gray-900 mb-4">Cookies</h2>
+      <p class="text-base leading-relaxed text-gray-700 mb-4">Cookies are files with small amount of data that is commonly used an anonymous unique identifier. These are sent to your browser from the website that you visit and are stored on your computer's hard drive.</p>
+      <p class="text-base leading-relaxed text-gray-700">Our website uses these "cookies" to collection information and to improve our Service. You have the option to either accept or refuse these cookies, and know when a cookie is being sent to your computer. If you choose to refuse our cookies, you may not be able to use some portions of our Service.</p>
+    </section>
+  </div>
+</div>`,
         meta_title: 'Privacy Policy',
         meta_description: 'Privacy Policy for Wapi',
         status: true,
@@ -15,7 +40,30 @@ async function seedPages() {
       {
         title: 'Terms and Conditions',
         slug: 'terms-and-conditions',
-        content: '<h1>Terms and Conditions</h1><p>This is the default Terms and Conditions content. Please update it in the admin panel.</p>',
+        content: `<div class="space-y-6 text-gray-600 max-w-4xl mx-auto py-8">
+  <div class="border-b border-gray-200 pb-5 mb-8">
+    <h1 class="text-3xl md:text-4xl font-extrabold text-gray-900 tracking-tight">TERMS & CONDITIONS</h1>
+    <p class="mt-2 text-sm text-gray-500">Last updated: [DATE]</p>
+  </div>
+  <div class="space-y-8">
+    <section>
+      <h2 class="text-2xl font-bold text-gray-900 mb-4">Introduction</h2>
+      <p class="text-base leading-relaxed text-gray-700">Welcome to Wapi! By using our website and/or using the services that are provided, you acknowledge that you have read, understood, and agree to be bound by our Terms and Conditions. These Terms and Conditions unconditionally extend and apply to all related applications, internet service, or website extensions. If you are not in agreement with all of these Terms and Conditions, you are prohibited from using this Website, and you may discontinue use immediately. Wapi recommends that you save or print a copy of these Terms and Conditions for future reference.</p>
+    </section>
+    <section>
+      <h2 class="text-2xl font-bold text-gray-900 mb-4">Agreement to Terms and Conditions</h2>
+      <p class="text-base leading-relaxed text-gray-700">Wapi Terms And Conditions (these "Terms" or these "Terms and Conditions") contained in this Agreement shall govern your use of this Website and all its content (collectively referred to herein as this "Website"). These Terms outline the rules and regulations guiding the use of Wapi located at wapi.com. All materials/information/documents/services or all other entities (collectively referred to as content) that appear on the Wapi shall be administered subject to these Terms and Conditions. These Terms and Conditions apply in full force and effect to your use of this Website, and the use of this Website constitutes an express agreement with all the terms and conditions contained herein in full. Do not continue to use this Website if you have any objection to any of the Terms and Conditions stated on this page.</p>
+    </section>
+    <section>
+      <h2 class="text-2xl font-bold text-gray-900 mb-4">Definitions/Terminology</h2>
+      <p class="text-base leading-relaxed text-gray-700">The following definitions apply to these Terms and Conditions, Privacy Statement, Disclaimer Notice and all Agreements: "User", "Visitor", "Client", "Customer", "You" and "Your" refers to you, the person(s) that use this Website. "Wapi", "We", "Our" and "Us", refers to our Website/Company. "Party", "Parties", or "Us", refers to both you and us. All terms refer to all considerations of Wapi necessary to undertake support to you for the express purpose of meeting your User needs in respect of our services, under and subject to, prevailing law of the state or country in which Wapi operates (India). Any use of these definitions or other glossary in the singular, plural, capitalization, and/or pronoun are interchangeable but refer to the same.</p>
+    </section>
+    <section>
+      <h2 class="text-2xl font-bold text-gray-900 mb-4">Intellectual Property Rights</h2>
+      <p class="text-base leading-relaxed text-gray-700">Other than the content you own and opted to include on this Website, under these Terms, Wapi and/or its licensors own and reserve all intellectual property rights of this Website. You are granted a limited license, subject to the restrictions entailed in these Terms and Conditions, for purposes of viewing this Website's content.</p>
+    </section>
+  </div>
+</div>`,
         meta_title: 'Terms and Conditions',
         meta_description: 'Terms and Conditions for Wapi',
         status: true,
@@ -24,7 +72,35 @@ async function seedPages() {
       {
         title: 'Refund Policy',
         slug: 'refund-policy',
-        content: '<h1>Refund Policy</h1><p>This is the default Refund Policy content. Please update it in the admin panel.</p>',
+        content: `<div class="space-y-6 text-gray-600 max-w-4xl mx-auto py-8">
+  <div class="border-b border-gray-200 pb-5 mb-8">
+    <h1 class="text-3xl md:text-4xl font-extrabold text-gray-900 tracking-tight">REFUND POLICY</h1>
+  </div>
+  <div class="space-y-8">
+    <section>
+      <p class="text-base leading-relaxed text-gray-700 mb-4">These terms and conditions constitute the return and refund policy of Wapi.</p>
+      <p class="text-base leading-relaxed text-gray-700 mb-4">Thank you for your purchase. If you are not happy or sure about your purchase, we are here to make it right.</p>
+    </section>
+    <section>
+      <h2 class="text-2xl font-bold text-gray-900 mb-4">Terms and Conditions for return and refund:</h2>
+      <ol class="list-decimal pl-6 space-y-4 text-base text-gray-700">
+        <li>The customers have 14 days to check their purchases.</li>
+        <li>If a customer is unsatisfied with the products, they must return them within 14 days of the purchase. Wapi will refund all your money without any questions.</li>
+        <li>The products must be returned within 14 days under the following conditions:
+          <ul class="list-[lower-alpha] pl-6 mt-2 space-y-2">
+            <li>The condition of the purchase must be the same as it was at the time of purchase</li>
+            <li>It must contain all tags</li>
+            <li>It must not be damaged</li>
+            <li>The customer must bring the purchase receipt</li>
+          </ul>
+        </li>
+        <li>After fourteen days of the purchase or not fulfilling any of the conditions provided in clause 3 Wapi shall not accept any return, and no money will be refunded.</li>
+        <li>If you want more information regarding return and refund policy please contact us.</li>
+      </ol>
+      <p class="text-base leading-relaxed text-gray-700 mt-6 font-semibold">Thank you for choosing Wapi!</p>
+    </section>
+  </div>
+</div>`,
         meta_title: 'Refund Policy',
         meta_description: 'Refund Policy for Wapi',
         status: true,
@@ -45,9 +121,9 @@ async function seedPages() {
             title: "Scale Your Sales and Support on WhatsApp",
             subtitle: "Manage customer chats together with a shared inbox, build automated reply bots, send bulk messages to customers, and link with the tools you already use.",
             button_text: "Try For Free",
-            button_url: "/auth/signup",
-            button_2_text: "View Plans",
-            button2_url: "/billing/plans",
+            button_url: "/auth/register",
+            // button_2_text: "View Plans",
+            // button2_url: "/billing/plans",
             bullets: ["Instant QR setup", "Official Connection", "No setup fees"],
             side_gif: '/uploads/placeholder.jpg'
           },
@@ -100,7 +176,7 @@ async function seedPages() {
             title: "Turn Your WhatsApp Into A Sales Engine Today",
             subtitle: "Start sending announcements, managing team chats, and answering customer questions automatically right now.",
             button1_title: "Try For Free",
-            button1_url: "/auth/signup",
+            button1_url: "#contact",
             button2_title: "Talk to Sales",
             button2_description: "",
             bullets: ["5-Minute Setup", "Official Connection", "Cancel Anytime"]
@@ -122,9 +198,9 @@ async function seedPages() {
             title: "Turn Instagram Comments into Direct DM Sales",
             subtitle: "Send automated discount codes, product catalogs, or instant replies to customer messages the second they comment on your posts or reels.",
             button_text: "Connect Your Account",
-            button_url: "/auth/signup",
-            button_2_text: "Test Demo First",
-            button2_url: "#playground",
+            button_url: "/auth/register",
+            // button_2_text: "Test Demo First",
+            // button2_url: "#playground",
             bullets: ["Safe Official Connection", "Auto-like comments", "Sets up in 5 minutes"],
             side_gif: '/uploads/placeholder.jpg'
           },
@@ -162,7 +238,7 @@ async function seedPages() {
             title: "Scale Your Instagram DM Automation Today",
             subtitle: "Turn comments into customers, automate customer service, and boost sales 24/7.",
             button1_title: "Try For Free",
-            button1_url: "/auth/signup",
+            button1_url: "#contact",
             button2_title: "Talk to Sales",
             button2_description: "",
             bullets: ["5-Minute Setup", "Official Connection", "Cancel Anytime"]
@@ -184,9 +260,9 @@ async function seedPages() {
             title: "Automate Your Telegram Customer Chats",
             subtitle: "Connect your business chat, create quick message templates with buttons, set up automatic replies for customer questions, and track all incoming messages easily.",
             button_text: "Link Your Chat Bot",
-            button_url: "/auth/signup",
-            button_2_text: "See What It Can Do",
-            button2_url: "#features-matrix",
+            button_url: "/auth/register",
+            // button_2_text: "See What It Can Do",
+            // button2_url: "#features-matrix",
             bullets: ["Message History Logs", "Easy Reply Buttons", "Auto-Replies for Words"],
             side_image: '/uploads/placeholder.jpg'
           },
@@ -216,7 +292,7 @@ async function seedPages() {
             title: "Automate Your Telegram Chat Today",
             subtitle: "Connect your account in seconds, write easy reply buttons, set up key word detection, and view all chats in real-time.",
             button1_title: "Try For Free",
-            button1_url: "/auth/signup",
+            button1_url: "#contact",
             button2_title: "Talk to Sales",
             button2_description: "",
             bullets: ["Easy Sign In", "Official Connection", "Cancel Anytime"]
@@ -238,9 +314,9 @@ async function seedPages() {
             title: "Automate Your Facebook Pages & Lead Ads",
             subtitle: "Connect your Facebook business pages, automatically save customer form details from your ads, chat in a single inbox, and send easy automated messages.",
             button_text: "Connect Your Facebook Account",
-            button_url: "/auth/signup",
-            button_2_text: "See What It Can Do",
-            button2_url: "#features-showcase",
+            button_url: "/auth/register",
+            // button_2_text: "See What It Can Do",
+            // button2_url: "#features-showcase",
             bullets: ["Easy Form Syncing", "Simple Ad Reports", "Automatic Message Replies"],
             side_image: '/uploads/placeholder.jpg'
           },
@@ -283,7 +359,7 @@ async function seedPages() {
             title: "Automate Your Facebook Ads & Leads Today",
             subtitle: "Link your pages, track active ad campaigns, save lead form answers, and reply to customers automatically.",
             button1_title: "Try For Free",
-            button1_url: "/auth/signup",
+            button1_url: "#contact",
             button2_title: "Talk to Sales",
             button2_description: "",
             bullets: ["Easy Sign In", "Official Connection", "Cancel Anytime"]
@@ -305,7 +381,7 @@ async function seedPages() {
             title: "Automate Voice Calls with AI Call Agents",
             subtitle: "Configure custom voice bots to answer customer calls, run automated AI support prompts, and connect with external API systems.",
             button_text: "Get Started Free",
-            button_url: "/auth/signup",
+            button_url: "/auth/register",
             bullet_points: [
               "Welcome greetings",
               "Prompt instruction training",
@@ -489,9 +565,9 @@ async function seedPages() {
             title: "Turn WhatsApp into a Direct Storefront for Checkout",
             subtitle: "Showcase digital menus, synced stock categories, and details directly to clients inside DMs. Allow shoppers to browse, compile carts, and request automated secure billing links in 1-click.",
             button_text: "Start Selling Now",
-            button_url: "/auth/signup",
-            button_2_text: "Try Catalog Demo",
-            button2_url: "#catalog-demo",
+            button_url: "/auth/register",
+            // button_2_text: "Try Catalog Demo",
+            // button2_url: "#catalog-demo",
             bullets: ["Auto-sync inventories", "Native Checkout Flow", "Stripe & Razorpay ready"]
           },
           live_demo: {
@@ -641,19 +717,19 @@ async function seedPages() {
             types: [
               {
                 title: "Standard",
-                description: "Regular marketing message with text body and optional CTA button.",
+                description: "Regular marketing message with text content, media, and optional CTA buttons for all connected channels.",
                 icon: "Tag",
                 image: '/uploads/placeholder.jpg'
               },
               {
                 title: "Limited Time Offer",
-                description: "With expiration countdown timer to drive urgency-based conversions.",
+                description: "Create urgency-driven campaigns with promotional messages, media, and interactive CTAs across all channels.",
                 icon: "Gift",
                 image: '/uploads/placeholder.jpg'
               },
               {
                 title: "Coupon Code",
-                description: "Include a copy-able promo code block for discounts and reward redemption.",
+                description: "Share promotional codes and exclusive discounts with engaging messages across all connected channels.",
                 icon: "Ticket",
                 image: '/uploads/placeholder.jpg'
               },
@@ -677,7 +753,7 @@ async function seedPages() {
               },
               {
                 title: "Carousel Media",
-                description: "Horizontal image/video cards with action buttons for rich media campaigns.",
+                description: "Showcase multiple images, videos, and interactive cards with action buttons across all channels.",
                 icon: "Image",
                 image: '/uploads/placeholder.jpg'
               }
@@ -718,9 +794,9 @@ async function seedPages() {
             title: "Interactive forms that live inside WhatsApp chats",
             subtitle: "Capture leads, feedback, and bookings with drag-and-drop forms that render natively in WhatsApp. No external links, no website redirects — just seamless inline data collection.",
             button_text: "Start Building Free",
-            button_url: "/auth/signup",
-            button_2_text: "See How It Works",
-            button2_url: "#forms-workflow",
+            button_url: "/auth/register",
+            // button_2_text: "See How It Works",
+            // button2_url: "#forms-workflow",
             bullets: ["No-code builder", "Meta Flows powered", "Keyword auto-trigger"],
             image: '/uploads/placeholder.jpg'
           },
@@ -817,513 +893,513 @@ async function seedPages() {
           }
         }
       },
-    // ─── AUTOMATION BUILDER ───────────────────────────────────────────────────
-    {
-      title: 'Automation Builder',
-      slug: 'automation_builder',
-      system_reserved: true,
-      content: '',
-      meta_title: 'Automation Builder — Visual No-Code Chatbot Flow Builder',
-      meta_description: 'Build powerful WhatsApp chatbots visually with drag-and-drop flow nodes. Automate conversations, qualify leads, and connect webhooks without writing a single line of code.',
-      status: true,
-      sort_order: 12,
-      dynamic_content: {
-        hero: {
-          badge: 'No-Code Chatbot Builder',
-          title: 'Automate Conversations Visually Without Any Code',
-          subtitle: 'Create smart WhatsApp chatbots using a simple drag-and-drop builder. Answer customer FAQs, capture contact parameters, branch logic conditionally, and trigger instant webhook lookups automatically.',
-          button_text: 'Start Building For Free',
-          button_url: '/auth/signup',
-          button_2_text: 'Explore Flow Nodes',
-          button2_url: '#node-directory',
-          bullets: ['No credit card needed', 'Built-in template integration', 'API webhooks enabled'],
-          image: '/uploads/placeholder.jpg'
-        },
-        flow_nodes: {
-          badge: 'Visual Blocks Directory',
-          title: 'All Conversational Flow Nodes',
-          description: 'Connect simple, functional visual components to outline paths for any client inquiry. Filter nodes by core category to discover options.',
-          nodes: [
-            {
-              name: 'Automation Entry',
-              description: 'Launches the bot sequence whenever keyword matches, campaigns trigger, or dynamic variables match.',
-              type: 'START',
-              icon: 'Play'
-            },
-            {
-              name: 'Send Message',
-              description: 'Sends a rich text format layout bubble with personalized custom attributes directly to customers.',
-              type: 'MESSAGING',
-              icon: 'MessageSquare'
-            },
-            {
-              name: 'Quick Reply',
-              description: 'Configures clickable buttons (up to 3) allowing clients to choose options instantly without typing.',
-              type: 'MESSAGING',
-              icon: 'CheckCircle2'
-            },
-            {
-              name: 'Form Flow',
-              description: 'Triggers sequential nested message collections to capture customer details like a visual form.',
-              type: 'MESSAGING',
-              icon: 'FileText'
-            },
-            {
-              name: 'Send Template',
-              description: 'Sends pre-approved Meta message templates with headers, footers, and custom variable parameters.',
-              type: 'MESSAGING',
-              icon: 'Grid'
-            },
-            {
-              name: 'Call to Action',
-              description: 'Sends interactive layout buttons linked to phone dialing or external web URLs (e.g. pay links).',
-              type: 'MESSAGING',
-              icon: 'Sparkles'
-            },
-            {
-              name: 'Selection List',
-              description: 'Presents a structured menu list containing sections and row items (up to 10) for organized options selection.',
-              type: 'INTERACTIONS',
-              icon: 'Layers'
-            },
-            {
-              name: 'Attach Media',
-              description: 'Appends rich media files like PDFs, images, invoices, or audio tracks to the chat feed.',
-              type: 'INTERACTIONS',
-              icon: 'Share2'
-            },
-            {
-              name: 'Send Location',
-              description: 'Sends map coordinates (latitude/longitude) of offices or pickup points directly to the user.',
-              type: 'INTERACTIONS',
-              icon: 'MapPin'
-            },
-            {
-              name: 'Assign Chatbot',
-              description: 'Switches active chat handler responsibilities to a separate flow or sub-routine chatbot sequence.',
-              type: 'INTERACTIONS',
-              icon: 'Briefcase'
-            },
-            {
-              name: 'Wait Timer',
-              description: 'Delays flow progression by custom times (seconds, minutes, hours) to humanize bot pacing.',
-              type: 'UTILITIES',
-              icon: 'Timer'
-            },
-            {
-              name: 'Wait for Reply',
-              description: 'Halts the flow process until the customer replies. Captures their entry for evaluation.',
-              type: 'UTILITIES',
-              icon: 'Timer'
-            },
-            {
-              name: 'Logic Control',
-              description: 'Evaluates standard rules (business hours checks, country code filters, prior selections) to route users.',
-              type: 'LOGIC',
-              icon: 'GitBranch'
-            },
-            {
-              name: 'External API',
-              description: 'Performs HTTP request routines (GET, POST, PUT) to fetch or update records in dynamic databases.',
-              type: 'INTEGRATIONS',
-              icon: 'Database'
-            },
-            {
-              name: 'Webhook',
-              description: 'Dispatches trigger events containing user attributes to other platforms (Shopify, CRM) instantly.',
-              type: 'INTEGRATIONS',
-              icon: 'Share2'
-            },
-            {
-              name: 'Save Response',
-              description: 'Persists the values of user responses directly into custom fields in your database layout.',
-              type: 'INTEGRATIONS',
-              icon: 'Database'
-            },
-            {
-              name: 'Google Sheets',
-              description: 'Appends rows or searches values in your integrated Google Spreadsheets spreadsheet in real-time.',
-              type: 'INTEGRATIONS',
-              icon: 'FileText'
-            },
-            {
-              name: 'Calendar Event',
-              description: 'Connects with scheduling software to create meetings or save appointment events on the calendar.',
-              type: 'INTEGRATIONS',
-              icon: 'Calendar'
-            },
-            {
-              name: 'Assign Tag',
-              description: 'Appends a categorizing label (e.g. VIP, Refund Needed) to the contact profile timeline.',
-              type: 'CRM',
-              icon: 'Tag'
-            },
-            {
-              name: 'Add to Segment',
-              description: 'Adds the contact to a segment folder for bulk broadcasting and campaign target filtering.',
-              type: 'CRM',
-              icon: 'UserPlus'
-            },
-            {
-              name: 'Update Contact',
-              description: 'Modifies variables on contact models like name, preferred language, or alternate coordinates.',
-              type: 'CRM',
-              icon: 'UserCheck'
-            }
-          ]
-        },
-        use_cases: {
-          badge: 'Use Cases',
-          title: 'Proven Chatbot Flow Recipes',
-          description: 'Explore how standard node categories compile into production-ready visual automation sequences.',
-          tabs: [
-            {
-              title: 'Lead Qualification & Booking',
-              sub_title: '01. LEAD GENERATION',
-              side_image: '/uploads/placeholder.jpg',
-              steps: [
-                {
-                  title: 'Automation Entry (Start)',
-                  description: 'Triggers flow when user clicks Facebook Ad button payload or sends "Book".'
-                },
-                {
-                  title: 'Form Flow (Messaging)',
-                  description: 'Asks qualification details: company size, name, and email sequentially.'
-                },
-                {
-                  title: 'External API / Webhook (Integration)',
-                  description: 'Calls API webhook to check calendar availability slots dynamically.'
-                },
-                {
-                  title: 'Calendar Event (Integration)',
-                  description: 'Books meeting automatically, posts calendar event, and replies confirmation text.'
-                }
-              ]
-            },
-            {
-              title: 'Order Status Track Lookup',
-              sub_title: '02. CUSTOMER UTILITIES',
-              side_image: '/uploads/placeholder.jpg',
-              steps: [
-                {
-                  title: 'Automation Entry (Start)',
-                  description: 'Matches incoming keywords containing "Track", "Order", or "Delivery status".'
-                },
-                {
-                  title: 'Wait for Reply (Utilities)',
-                  description: 'Asks client: "Please enter order ID". Pauses flow execution until they reply.'
-                },
-                {
-                  title: 'Google Sheets (Integration)',
-                  description: 'Searches Spreadsheet order rows automatically to find the match ID status.'
-                },
-                {
-                  title: 'Send Message (Messaging)',
-                  description: 'Pulls status variable value and triggers WhatsApp message: "Your order is Shipped".'
-                }
-              ]
-            },
-            {
-              title: 'Support Triage & Escalation',
-              sub_title: '03. SUPPORT SERVICE',
-              side_image: '/uploads/placeholder.jpg',
-              steps: [
-                {
-                  title: 'Automation Entry (Start)',
-                  description: 'Launches when a contact sends general help queries or matches nothing else.'
-                },
-                {
-                  title: 'Logic Control (Logic)',
-                  description: 'Checks rules: Is the current server time between 9:00 AM and 6:00 PM?'
-                },
-                {
-                  title: 'Selection List (Interactions)',
-                  description: 'Displays interactive menu categories (Sales, Technical, Billing, FAQs).'
-                },
-                {
-                  title: 'Assign Chatbot (Interactions)',
-                  description: 'If customer clicks Technical, switches thread to human Support Shared Inbox.'
-                }
-              ]
-            }
-          ]
-        },
-        faqs: {
-          badge: 'FAQs',
-          title: 'Got Questions about Chatbots & Flows?',
-          items: [
-            {
-              question: 'Do I need coding skills to build a WhatsApp chatbot?',
-              answer: 'Absolutely not. Our Visual Editor is designed specifically for business users. You drag node blocks, link them using cursor lines, and configure triggers or responses in plain text.'
-            },
-            {
-              question: 'How do API integrations or webhooks work?',
-              answer: 'The Webhook block triggers dynamic API calls mid-conversation. For example, when a user enters an order ID, the chatbot can make a GET request to your Shopify backend, pull the status, and reply to the user automatically.'
-            },
-            {
-              question: 'What happens when a customer needs human assistance?',
-              answer: 'Our chatbot handover block routes the customer context to the Shared Team Inbox immediately. The automation stops running on that active thread, letting agents converse natively.'
-            }
-          ]
+      // ─── AUTOMATION BUILDER ───────────────────────────────────────────────────
+      {
+        title: 'Automation Builder',
+        slug: 'automation_builder',
+        system_reserved: true,
+        content: '',
+        meta_title: 'Automation Builder — Visual No-Code Chatbot Flow Builder',
+        meta_description: 'Build powerful WhatsApp chatbots visually with drag-and-drop flow nodes. Automate conversations, qualify leads, and connect webhooks without writing a single line of code.',
+        status: true,
+        sort_order: 12,
+        dynamic_content: {
+          hero: {
+            badge: 'No-Code Chatbot Builder',
+            title: 'Automate Conversations Visually Without Any Code',
+            subtitle: 'Create smart WhatsApp chatbots using a simple drag-and-drop builder. Answer customer FAQs, capture contact parameters, branch logic conditionally, and trigger instant webhook lookups automatically.',
+            button_text: 'Start Building For Free',
+            button_url: '/auth/register',
+            button_2_text: 'Explore Flow Nodes',
+            button2_url: '#node-directory',
+            bullets: ['No credit card needed', 'Built-in template integration', 'API webhooks enabled'],
+            image: '/uploads/placeholder.jpg'
+          },
+          flow_nodes: {
+            badge: 'Visual Blocks Directory',
+            title: 'All Conversational Flow Nodes',
+            description: 'Connect simple, functional visual components to outline paths for any client inquiry. Filter nodes by core category to discover options.',
+            nodes: [
+              {
+                name: 'Automation Entry',
+                description: 'Launches the bot sequence whenever keyword matches, campaigns trigger, or dynamic variables match.',
+                type: 'START',
+                icon: 'Play'
+              },
+              {
+                name: 'Send Message',
+                description: 'Sends a rich text format layout bubble with personalized custom attributes directly to customers.',
+                type: 'MESSAGING',
+                icon: 'MessageSquare'
+              },
+              {
+                name: 'Quick Reply',
+                description: 'Configures clickable buttons (up to 3) allowing clients to choose options instantly without typing.',
+                type: 'MESSAGING',
+                icon: 'CheckCircle2'
+              },
+              {
+                name: 'Form Flow',
+                description: 'Triggers sequential nested message collections to capture customer details like a visual form.',
+                type: 'MESSAGING',
+                icon: 'FileText'
+              },
+              {
+                name: 'Send Template',
+                description: 'Sends pre-approved Meta message templates with headers, footers, and custom variable parameters.',
+                type: 'MESSAGING',
+                icon: 'Grid'
+              },
+              {
+                name: 'Call to Action',
+                description: 'Sends interactive layout buttons linked to phone dialing or external web URLs (e.g. pay links).',
+                type: 'MESSAGING',
+                icon: 'Sparkles'
+              },
+              {
+                name: 'Selection List',
+                description: 'Presents a structured menu list containing sections and row items (up to 10) for organized options selection.',
+                type: 'INTERACTIONS',
+                icon: 'Layers'
+              },
+              {
+                name: 'Attach Media',
+                description: 'Appends rich media files like PDFs, images, invoices, or audio tracks to the chat feed.',
+                type: 'INTERACTIONS',
+                icon: 'Share2'
+              },
+              {
+                name: 'Send Location',
+                description: 'Sends map coordinates (latitude/longitude) of offices or pickup points directly to the user.',
+                type: 'INTERACTIONS',
+                icon: 'MapPin'
+              },
+              {
+                name: 'Assign Chatbot',
+                description: 'Switches active chat handler responsibilities to a separate flow or sub-routine chatbot sequence.',
+                type: 'INTERACTIONS',
+                icon: 'Briefcase'
+              },
+              {
+                name: 'Wait Timer',
+                description: 'Delays flow progression by custom times (seconds, minutes, hours) to humanize bot pacing.',
+                type: 'UTILITIES',
+                icon: 'Timer'
+              },
+              {
+                name: 'Wait for Reply',
+                description: 'Halts the flow process until the customer replies. Captures their entry for evaluation.',
+                type: 'UTILITIES',
+                icon: 'Timer'
+              },
+              {
+                name: 'Logic Control',
+                description: 'Evaluates standard rules (business hours checks, country code filters, prior selections) to route users.',
+                type: 'LOGIC',
+                icon: 'GitBranch'
+              },
+              {
+                name: 'External API',
+                description: 'Performs HTTP request routines (GET, POST, PUT) to fetch or update records in dynamic databases.',
+                type: 'INTEGRATIONS',
+                icon: 'Database'
+              },
+              {
+                name: 'Webhook',
+                description: 'Dispatches trigger events containing user attributes to other platforms (Shopify, CRM) instantly.',
+                type: 'INTEGRATIONS',
+                icon: 'Share2'
+              },
+              {
+                name: 'Save Response',
+                description: 'Persists the values of user responses directly into custom fields in your database layout.',
+                type: 'INTEGRATIONS',
+                icon: 'Database'
+              },
+              {
+                name: 'Google Sheets',
+                description: 'Appends rows or searches values in your integrated Google Spreadsheets spreadsheet in real-time.',
+                type: 'INTEGRATIONS',
+                icon: 'FileText'
+              },
+              {
+                name: 'Calendar Event',
+                description: 'Connects with scheduling software to create meetings or save appointment events on the calendar.',
+                type: 'INTEGRATIONS',
+                icon: 'Calendar'
+              },
+              {
+                name: 'Assign Tag',
+                description: 'Appends a categorizing label (e.g. VIP, Refund Needed) to the contact profile timeline.',
+                type: 'CRM',
+                icon: 'Tag'
+              },
+              {
+                name: 'Add to Segment',
+                description: 'Adds the contact to a segment folder for bulk broadcasting and campaign target filtering.',
+                type: 'CRM',
+                icon: 'UserPlus'
+              },
+              {
+                name: 'Update Contact',
+                description: 'Modifies variables on contact models like name, preferred language, or alternate coordinates.',
+                type: 'CRM',
+                icon: 'UserCheck'
+              }
+            ]
+          },
+          use_cases: {
+            badge: 'Use Cases',
+            title: 'Proven Chatbot Flow Recipes',
+            description: 'Explore how standard node categories compile into production-ready visual automation sequences.',
+            tabs: [
+              {
+                title: 'Lead Qualification & Booking',
+                sub_title: '01. LEAD GENERATION',
+                side_image: '/uploads/placeholder.jpg',
+                steps: [
+                  {
+                    title: 'Automation Entry (Start)',
+                    description: 'Triggers flow when user clicks Facebook Ad button payload or sends "Book".'
+                  },
+                  {
+                    title: 'Form Flow (Messaging)',
+                    description: 'Asks qualification details: company size, name, and email sequentially.'
+                  },
+                  {
+                    title: 'External API / Webhook (Integration)',
+                    description: 'Calls API webhook to check calendar availability slots dynamically.'
+                  },
+                  {
+                    title: 'Calendar Event (Integration)',
+                    description: 'Books meeting automatically, posts calendar event, and replies confirmation text.'
+                  }
+                ]
+              },
+              {
+                title: 'Order Status Track Lookup',
+                sub_title: '02. CUSTOMER UTILITIES',
+                side_image: '/uploads/placeholder.jpg',
+                steps: [
+                  {
+                    title: 'Automation Entry (Start)',
+                    description: 'Matches incoming keywords containing "Track", "Order", or "Delivery status".'
+                  },
+                  {
+                    title: 'Wait for Reply (Utilities)',
+                    description: 'Asks client: "Please enter order ID". Pauses flow execution until they reply.'
+                  },
+                  {
+                    title: 'Google Sheets (Integration)',
+                    description: 'Searches Spreadsheet order rows automatically to find the match ID status.'
+                  },
+                  {
+                    title: 'Send Message (Messaging)',
+                    description: 'Pulls status variable value and triggers WhatsApp message: "Your order is Shipped".'
+                  }
+                ]
+              },
+              {
+                title: 'Support Triage & Escalation',
+                sub_title: '03. SUPPORT SERVICE',
+                side_image: '/uploads/placeholder.jpg',
+                steps: [
+                  {
+                    title: 'Automation Entry (Start)',
+                    description: 'Launches when a contact sends general help queries or matches nothing else.'
+                  },
+                  {
+                    title: 'Logic Control (Logic)',
+                    description: 'Checks rules: Is the current server time between 9:00 AM and 6:00 PM?'
+                  },
+                  {
+                    title: 'Selection List (Interactions)',
+                    description: 'Displays interactive menu categories (Sales, Technical, Billing, FAQs).'
+                  },
+                  {
+                    title: 'Assign Chatbot (Interactions)',
+                    description: 'If customer clicks Technical, switches thread to human Support Shared Inbox.'
+                  }
+                ]
+              }
+            ]
+          },
+          faqs: {
+            badge: 'FAQs',
+            title: 'Got Questions about Chatbots & Flows?',
+            items: [
+              {
+                question: 'Do I need coding skills to build a WhatsApp chatbot?',
+                answer: 'Absolutely not. Our Visual Editor is designed specifically for business users. You drag node blocks, link them using cursor lines, and configure triggers or responses in plain text.'
+              },
+              {
+                question: 'How do API integrations or webhooks work?',
+                answer: 'The Webhook block triggers dynamic API calls mid-conversation. For example, when a user enters an order ID, the chatbot can make a GET request to your Shopify backend, pull the status, and reply to the user automatically.'
+              },
+              {
+                question: 'What happens when a customer needs human assistance?',
+                answer: 'Our chatbot handover block routes the customer context to the Shared Team Inbox immediately. The automation stops running on that active thread, letting agents converse natively.'
+              }
+            ]
+          }
+        }
+      },
+      // ─── CTWA (CLICK TO WHATSAPP ADS) ────────────────────────────────────────
+      {
+        title: 'Click to WhatsApp Ads',
+        slug: 'ctwa',
+        content: '',
+        system_reserved: true,
+        meta_title: 'Click to WhatsApp Ads — Run Facebook & Instagram Ads That Open WhatsApp',
+        meta_description: 'Create, manage, and optimize Facebook & Instagram ad campaigns that drive users directly into WhatsApp conversations. Built-in 3-step wizard, targeting, creatives, and real-time analytics.',
+        status: true,
+        sort_order: 13,
+        dynamic_content: {
+          hero: {
+            badge: 'Click to WhatsApp Ads',
+            title: 'Turn Facebook & Instagram Ads into Live WhatsApp Conversations',
+            description: 'Create, manage, and optimize ad campaigns that open WhatsApp chats directly. Target the right audience, track performance in real-time, and convert leads faster.',
+            button_text: 'Launch Your First Campaign',
+            button_url: '/auth/register',
+            button_2_text: 'Explore Features',
+            button2_url: '#ctwa-features',
+            bullets: ['Facebook & Instagram', '3-Step Wizard', 'Real-Time Analytics'],
+            image: '/uploads/placeholder.jpg'
+          },
+          structure: {
+            badge: 'Structure',
+            title: 'Campaign hierarchy, visualized',
+            subtitle: 'Three levels that define your ad strategy — from broad targeting to precise creative delivery.',
+            steps: [
+              {
+                title: 'Campaigns',
+                description: 'Define objective, budget & schedule. Choose from engagement, traffic, awareness, or leads goals.'
+              },
+              {
+                title: 'Ad Sets',
+                description: 'Target by location, age, gender & platform. Set bids, scheduling, and delivery optimization.'
+              },
+              {
+                title: 'Ads',
+                description: 'Create the creative — image, video, or carousel — with WhatsApp CTA button and welcome experience.'
+              }
+            ]
+          },
+          features: {
+            badge: 'Features',
+            title: 'Built for campaign success',
+            items: [
+              {
+                title: 'Asset Synchronization',
+                description: 'Connect your Facebook Pages and Instagram accounts in one click. The system automatically syncs ad accounts, pages, and Instagram professional accounts from your Facebook Business Manager.',
+                icon: 'Layers',
+                image: '/uploads/placeholder.jpg'
+              },
+              {
+                title: '3-Step Campaign Wizard',
+                description: 'No Facebook Ads Manager experience needed. Our guided wizard walks you through three simple steps: campaign details, ad set targeting, and ad creative with WhatsApp CTA.',
+                icon: 'Compass',
+                image: '/uploads/placeholder.jpg'
+              },
+              {
+                title: 'Location & Demographic Targeting',
+                description: 'Reach the right audience with precision. Target by country, age range, gender, and platform. Set daily budgets, bidding strategies, and optimization goals.',
+                icon: 'Users',
+                image: '/uploads/placeholder.jpg'
+              },
+              {
+                title: 'Multiple Creative Formats',
+                description: 'Choose from image, video, or carousel ad formats. Each creative supports a WhatsApp CTA button and can be paired with a WhatsApp Welcome Experience.',
+                icon: 'Palette',
+                image: '/uploads/placeholder.jpg'
+              },
+              {
+                title: 'WhatsApp Welcome Experience',
+                description: 'Set the perfect first impression. Configure a greeting message and ice breaker suggestions that users see when they click your ad and land in WhatsApp.',
+                icon: 'MessageCircle',
+                image: '/uploads/placeholder.jpg'
+              },
+              {
+                title: 'Real-Time Performance Analytics',
+                description: 'Monitor impressions, clicks, CTR, conversions, demographics breakdown, and platform performance. Use interactive charts to identify winning creatives and optimize underperformers.',
+                icon: 'LineChart',
+                image: '/uploads/placeholder.jpg'
+              }
+            ]
+          },
+          steps_launch: {
+            badge: 'Wizard',
+            title: 'Three simple steps to launch',
+            description: 'From concept to live campaign in minutes.',
+            steps: [
+              {
+                title: 'Campaign Setup',
+                description: 'Choose your campaign objective — engagement, traffic, awareness, or leads. Define the campaign name, set daily budget, select the special ad category, and pick your optimization goal.'
+              },
+              {
+                title: 'Targeting Configuration',
+                description: 'Define who sees your ads. Set targeting by gender, age range, and platforms (Facebook, Instagram, or both). Configure ad set name, daily budget, schedule start/end times, and billing event.'
+              },
+              {
+                title: 'Creative & Welcome',
+                description: 'Upload your ad creative — image, video, or carousel. Add the WhatsApp CTA button with your WhatsApp Business number. Configure the Welcome Experience with a greeting message and ice breaker suggestions.'
+              }
+            ]
+          },
+          faqs: {
+            badge: 'FAQs',
+            title: 'Click to WhatsApp Ads — common questions',
+            items: [
+              {
+                question: 'What is Click to WhatsApp Ads and how does it work?',
+                answer: 'Click to WhatsApp Ads are Facebook and Instagram advertisements that include a Call-to-Action button opening a WhatsApp chat conversation. When users tap the ad CTA, they\'re taken directly into a WhatsApp chat with your business — no forms, no landing pages, no friction.'
+              },
+              {
+                question: 'Do I need a Facebook Business Manager to create ads?',
+                answer: 'Yes. Our system connects to your existing Facebook Business Manager to sync your ad accounts, Facebook Pages, and Instagram professional accounts. Once connected, you can create, manage, and track campaigns directly from our dashboard without ever opening Ads Manager.'
+              },
+              {
+                question: 'What ad formats and creative types are supported?',
+                answer: 'We support image, video, and carousel ad formats. Each creative can include a WhatsApp CTA button and be paired with a Welcome Experience — a customizable greeting message with ice breaker suggestion buttons that appear when users land in your WhatsApp chat.'
+              }
+            ]
+          }
+        }
+      },
+      // ─── SHARED TEAM INBOX ──────────────────────────────────────────────────
+      {
+        title: 'Shared Team Inbox',
+        slug: 'shared_team_inbox',
+        content: '',
+        system_reserved: true,
+        meta_title: 'Shared Team Inbox — Collaborate & Manage Customer Chats Together',
+        meta_description: 'Bring all your WhatsApp, Instagram, and Facebook conversations into a single desktop viewport. Setup multi-agent routing, private notes, and AI response recommendations.',
+        status: true,
+        sort_order: 14,
+        dynamic_content: {
+          hero: {
+            badge: 'Omnichannel Team Hub',
+            title: 'One Unified Shared Inbox for Collaboration',
+            subtitle: 'Stop sharing phones or scanning QR codes. Bring all WhatsApp, Instagram, and Facebook conversations into a single desktop viewport. Help your agents close leads 10x faster with integrated AI.',
+            button_text: 'Start Free Trial',
+            button_url: '/auth/register',
+            button_2_text: 'Try Live Playground',
+            button2_url: '#playground-sec',
+            bullets: ['Multi-Agent Routing', 'AI Response Suggestion', 'Mask Numbers (Privacy)'],
+            image: '/uploads/placeholder.jpg'
+          },
+          sandbox: {
+            badge: 'Interactive Sandbox',
+            title: 'Take the Team Inbox for a Test Drive',
+            subtitle: 'Click agent assignments, generate replies using simulated AI, and experience the UI in real-time.',
+            image: '/uploads/placeholder.jpg'
+          },
+          features: {
+            badge: 'Engineered for Results',
+            title: 'Everything You Need to Automate Customer Success',
+            cards: [
+              {
+                icon: 'Inbox',
+                title: 'Unified Inbox Dashboard',
+                description: 'Consolidate customer message streams from WhatsApp API, Instagram DMs, and Facebook Messenger into one view. No orphan conversations.'
+              },
+              {
+                icon: 'Users',
+                title: 'Smart Agent Routing',
+                description: 'Assign conversations manually or setup automated routing parameters to balance workflow queues across support departments instantly.'
+              },
+              {
+                icon: 'Brain',
+                title: 'AI Suggested Replies',
+                description: 'Generate context-appropriate answers dynamically in the text area based on user ticket histories. Review, insert, and send in 1-click.'
+              },
+              {
+                icon: 'Sparkles',
+                title: 'Transform Message Tones',
+                description: 'Improve message copy drafts. Rephrase drafts instantly to sound highly professional, friendly, or compact before dispatching.'
+              },
+              {
+                icon: 'MessageSquare',
+                title: 'Private Internal Notes',
+                description: 'Discuss issues directly on the client timeline. Leave private mentions and agent coordination notes completely hidden from customers.'
+              },
+              {
+                icon: 'ShieldAlert',
+                title: 'Customer Number Masking',
+                description: 'Secure business data. Mask client telephone numbers from agents to protect databases, reduce information leakage, and enforce compliance.'
+              }
+            ]
+          },
+          team: {
+            badge: 'Team Collaboration',
+            title: 'Build Better Collaborations Behind the Scenes',
+            description: 'Enable your agents to coordinate on customer issues in real-time. Share labels, leave private internal instructions, and track agent activity logs without switching windows.',
+            side_image: '/uploads/placeholder.jpg',
+            cards: [
+              {
+                icon: 'Layers',
+                title: 'Prevent Collision & Duplicate Replies',
+                description: 'See who is viewing or replying to a chat in real-time to avoid sending overlapping answers.'
+              },
+              {
+                icon: 'Tag',
+                title: 'Assign Shared Tags & Filters',
+                description: 'Classify contacts using global tags like "Refund" or "VIP Inquirer" so any agent can search and filters queues.'
+              }
+            ]
+          },
+          counter: {
+            badge: 'Performance Impact',
+            title: 'Grow Your Business on Solid Numbers',
+            subtitle: 'See how adding a multi-agent Shared Inbox affects key business performance indicators. By automating drafts and routing chats instantly, teams respond faster and keep customers happier.',
+            counters: [
+              {
+                counts: '75%',
+                title: 'Quicker Response Times',
+                description: 'AI drafting tools and canned templates help agents resolve customer queries in seconds.'
+              },
+              {
+                counts: '10x',
+                title: 'Productivity Boost',
+                description: 'Multiple support agents work simultaneously under a single profile number.'
+              },
+              {
+                counts: '0',
+                title: 'Missed Messages',
+                description: 'Shared visibility prevents messages from slipping through shifts unhandled.'
+              }
+            ]
+          },
+          faqs: {
+            badge: 'FAQs',
+            title: 'Got Questions about the Shared Inbox?',
+            items: [
+              {
+                question: 'Do agents need their own separate mobile devices?',
+                answer: 'No. The entire workspace runs on a single official WhatsApp Business API profile or social page. Support agents login through their own dashboard accounts and share access dynamically.'
+              },
+              {
+                question: 'How does the contact masking / privacy control feature work?',
+                answer: 'Admins can enable contact masking in settings. Once activated, phone numbers are masked on the screen (e.g. +1 •••• ••-9922). Agents can send and receive texts, but cannot view or export complete contact numbers.'
+              },
+              {
+                question: 'Can we write notes to other team members during a chat?',
+                answer: 'Yes. Private Internal Notes can be written directly on the chat flow. They are highlighted with a distinct yellow theme and are completely invisible to customers.'
+              },
+              {
+                question: 'How do AI suggestions and text transformation work?',
+                answer: 'Our integrated LLM evaluates the client question and context to draft a reply instantly. Agents can hit the "Suggest Reply" button to insert it or use the rewrite panel to adjust tone guidelines.'
+              }
+            ]
+          }
         }
       }
-    },
-    // ─── CTWA (CLICK TO WHATSAPP ADS) ────────────────────────────────────────
-    {
-      title: 'Click to WhatsApp Ads',
-      slug: 'ctwa',
-      content: '',
-      system_reserved: true,
-      meta_title: 'Click to WhatsApp Ads — Run Facebook & Instagram Ads That Open WhatsApp',
-      meta_description: 'Create, manage, and optimize Facebook & Instagram ad campaigns that drive users directly into WhatsApp conversations. Built-in 3-step wizard, targeting, creatives, and real-time analytics.',
-      status: true,
-      sort_order: 13,
-      dynamic_content: {
-        hero: {
-          badge: 'Click to WhatsApp Ads',
-          title: 'Turn Facebook & Instagram Ads into Live WhatsApp Conversations',
-          description: 'Create, manage, and optimize ad campaigns that open WhatsApp chats directly. Target the right audience, track performance in real-time, and convert leads faster.',
-          button_text: 'Launch Your First Campaign',
-          button_url: '/auth/signup',
-          button_2_text: 'Explore Features',
-          button2_url: '#ctwa-features',
-          bullets: ['Facebook & Instagram', '3-Step Wizard', 'Real-Time Analytics'],
-          image: '/uploads/placeholder.jpg'
-        },
-        structure: {
-          badge: 'Structure',
-          title: 'Campaign hierarchy, visualized',
-          subtitle: 'Three levels that define your ad strategy — from broad targeting to precise creative delivery.',
-          steps: [
-            {
-              title: 'Campaigns',
-              description: 'Define objective, budget & schedule. Choose from engagement, traffic, awareness, or leads goals.'
-            },
-            {
-              title: 'Ad Sets',
-              description: 'Target by location, age, gender & platform. Set bids, scheduling, and delivery optimization.'
-            },
-            {
-              title: 'Ads',
-              description: 'Create the creative — image, video, or carousel — with WhatsApp CTA button and welcome experience.'
-            }
-          ]
-        },
-        features: {
-          badge: 'Features',
-          title: 'Built for campaign success',
-          items: [
-            {
-              title: 'Asset Synchronization',
-              description: 'Connect your Facebook Pages and Instagram accounts in one click. The system automatically syncs ad accounts, pages, and Instagram professional accounts from your Facebook Business Manager.',
-              icon: 'Layers',
-              image: '/uploads/placeholder.jpg'
-            },
-            {
-              title: '3-Step Campaign Wizard',
-              description: 'No Facebook Ads Manager experience needed. Our guided wizard walks you through three simple steps: campaign details, ad set targeting, and ad creative with WhatsApp CTA.',
-              icon: 'Compass',
-              image: '/uploads/placeholder.jpg'
-            },
-            {
-              title: 'Location & Demographic Targeting',
-              description: 'Reach the right audience with precision. Target by country, age range, gender, and platform. Set daily budgets, bidding strategies, and optimization goals.',
-              icon: 'Users',
-              image: '/uploads/placeholder.jpg'
-            },
-            {
-              title: 'Multiple Creative Formats',
-              description: 'Choose from image, video, or carousel ad formats. Each creative supports a WhatsApp CTA button and can be paired with a WhatsApp Welcome Experience.',
-              icon: 'Palette',
-              image: '/uploads/placeholder.jpg'
-            },
-            {
-              title: 'WhatsApp Welcome Experience',
-              description: 'Set the perfect first impression. Configure a greeting message and ice breaker suggestions that users see when they click your ad and land in WhatsApp.',
-              icon: 'MessageCircle',
-              image: '/uploads/placeholder.jpg'
-            },
-            {
-              title: 'Real-Time Performance Analytics',
-              description: 'Monitor impressions, clicks, CTR, conversions, demographics breakdown, and platform performance. Use interactive charts to identify winning creatives and optimize underperformers.',
-              icon: 'LineChart',
-              image: '/uploads/placeholder.jpg'
-            }
-          ]
-        },
-        steps_launch: {
-          badge: 'Wizard',
-          title: 'Three simple steps to launch',
-          description: 'From concept to live campaign in minutes.',
-          steps: [
-            {
-              title: 'Campaign Setup',
-              description: 'Choose your campaign objective — engagement, traffic, awareness, or leads. Define the campaign name, set daily budget, select the special ad category, and pick your optimization goal.'
-            },
-            {
-              title: 'Targeting Configuration',
-              description: 'Define who sees your ads. Set targeting by gender, age range, and platforms (Facebook, Instagram, or both). Configure ad set name, daily budget, schedule start/end times, and billing event.'
-            },
-            {
-              title: 'Creative & Welcome',
-              description: 'Upload your ad creative — image, video, or carousel. Add the WhatsApp CTA button with your WhatsApp Business number. Configure the Welcome Experience with a greeting message and ice breaker suggestions.'
-            }
-          ]
-        },
-        faqs: {
-          badge: 'FAQs',
-          title: 'Click to WhatsApp Ads — common questions',
-          items: [
-            {
-              question: 'What is Click to WhatsApp Ads and how does it work?',
-              answer: 'Click to WhatsApp Ads are Facebook and Instagram advertisements that include a Call-to-Action button opening a WhatsApp chat conversation. When users tap the ad CTA, they\'re taken directly into a WhatsApp chat with your business — no forms, no landing pages, no friction.'
-            },
-            {
-              question: 'Do I need a Facebook Business Manager to create ads?',
-              answer: 'Yes. Our system connects to your existing Facebook Business Manager to sync your ad accounts, Facebook Pages, and Instagram professional accounts. Once connected, you can create, manage, and track campaigns directly from our dashboard without ever opening Ads Manager.'
-            },
-            {
-              question: 'What ad formats and creative types are supported?',
-              answer: 'We support image, video, and carousel ad formats. Each creative can include a WhatsApp CTA button and be paired with a Welcome Experience — a customizable greeting message with ice breaker suggestion buttons that appear when users land in your WhatsApp chat.'
-            }
-          ]
-        }
-      }
-    },
-    // ─── SHARED TEAM INBOX ──────────────────────────────────────────────────
-    {
-      title: 'Shared Team Inbox',
-      slug: 'shared_team_inbox',
-      content: '',
-      system_reserved: true,
-      meta_title: 'Shared Team Inbox — Collaborate & Manage Customer Chats Together',
-      meta_description: 'Bring all your WhatsApp, Instagram, and Facebook conversations into a single desktop viewport. Setup multi-agent routing, private notes, and AI response recommendations.',
-      status: true,
-      sort_order: 14,
-      dynamic_content: {
-        hero: {
-          badge: 'Omnichannel Team Hub',
-          title: 'One Unified Shared Inbox for Collaboration',
-          subtitle: 'Stop sharing phones or scanning QR codes. Bring all WhatsApp, Instagram, and Facebook conversations into a single desktop viewport. Help your agents close leads 10x faster with integrated AI.',
-          button_text: 'Start Free Trial',
-          button_url: '/auth/signup',
-          button_2_text: 'Try Live Playground',
-          button2_url: '#playground-sec',
-          bullets: ['Multi-Agent Routing', 'AI Response Suggestion', 'Mask Numbers (Privacy)'],
-          image: '/uploads/placeholder.jpg'
-        },
-        sandbox: {
-          badge: 'Interactive Sandbox',
-          title: 'Take the Team Inbox for a Test Drive',
-          subtitle: 'Click agent assignments, generate replies using simulated AI, and experience the UI in real-time.',
-          image: '/uploads/placeholder.jpg'
-        },
-        features: {
-          badge: 'Engineered for Results',
-          title: 'Everything You Need to Automate Customer Success',
-          cards: [
-            {
-              icon: 'Inbox',
-              title: 'Unified Inbox Dashboard',
-              description: 'Consolidate customer message streams from WhatsApp API, Instagram DMs, and Facebook Messenger into one view. No orphan conversations.'
-            },
-            {
-              icon: 'Users',
-              title: 'Smart Agent Routing',
-              description: 'Assign conversations manually or setup automated routing parameters to balance workflow queues across support departments instantly.'
-            },
-            {
-              icon: 'Brain',
-              title: 'AI Suggested Replies',
-              description: 'Generate context-appropriate answers dynamically in the text area based on user ticket histories. Review, insert, and send in 1-click.'
-            },
-            {
-              icon: 'Sparkles',
-              title: 'Transform Message Tones',
-              description: 'Improve message copy drafts. Rephrase drafts instantly to sound highly professional, friendly, or compact before dispatching.'
-            },
-            {
-              icon: 'MessageSquare',
-              title: 'Private Internal Notes',
-              description: 'Discuss issues directly on the client timeline. Leave private mentions and agent coordination notes completely hidden from customers.'
-            },
-            {
-              icon: 'ShieldAlert',
-              title: 'Customer Number Masking',
-              description: 'Secure business data. Mask client telephone numbers from agents to protect databases, reduce information leakage, and enforce compliance.'
-            }
-          ]
-        },
-        team: {
-          badge: 'Team Collaboration',
-          title: 'Build Better Collaborations Behind the Scenes',
-          description: 'Enable your agents to coordinate on customer issues in real-time. Share labels, leave private internal instructions, and track agent activity logs without switching windows.',
-          side_image: '/uploads/placeholder.jpg',
-          cards: [
-            {
-              icon: 'Layers',
-              title: 'Prevent Collision & Duplicate Replies',
-              description: 'See who is viewing or replying to a chat in real-time to avoid sending overlapping answers.'
-            },
-            {
-              icon: 'Tag',
-              title: 'Assign Shared Tags & Filters',
-              description: 'Classify contacts using global tags like "Refund" or "VIP Inquirer" so any agent can search and filters queues.'
-            }
-          ]
-        },
-        counter: {
-          badge: 'Performance Impact',
-          title: 'Grow Your Business on Solid Numbers',
-          subtitle: 'See how adding a multi-agent Shared Inbox affects key business performance indicators. By automating drafts and routing chats instantly, teams respond faster and keep customers happier.',
-          counters: [
-            {
-              counts: '75%',
-              title: 'Quicker Response Times',
-              description: 'AI drafting tools and canned templates help agents resolve customer queries in seconds.'
-            },
-            {
-              counts: '10x',
-              title: 'Productivity Boost',
-              description: 'Multiple support agents work simultaneously under a single profile number.'
-            },
-            {
-              counts: '0',
-              title: 'Missed Messages',
-              description: 'Shared visibility prevents messages from slipping through shifts unhandled.'
-            }
-          ]
-        },
-        faqs: {
-          badge: 'FAQs',
-          title: 'Got Questions about the Shared Inbox?',
-          items: [
-            {
-              question: 'Do agents need their own separate mobile devices?',
-              answer: 'No. The entire workspace runs on a single official WhatsApp Business API profile or social page. Support agents login through their own dashboard accounts and share access dynamically.'
-            },
-            {
-              question: 'How does the contact masking / privacy control feature work?',
-              answer: 'Admins can enable contact masking in settings. Once activated, phone numbers are masked on the screen (e.g. +1 •••• ••-9922). Agents can send and receive texts, but cannot view or export complete contact numbers.'
-            },
-            {
-              question: 'Can we write notes to other team members during a chat?',
-              answer: 'Yes. Private Internal Notes can be written directly on the chat flow. They are highlighted with a distinct yellow theme and are completely invisible to customers.'
-            },
-            {
-              question: 'How do AI suggestions and text transformation work?',
-              answer: 'Our integrated LLM evaluates the client question and context to draft a reply instantly. Agents can hit the "Suggest Reply" button to insert it or use the rewrite panel to adjust tone guidelines.'
-            }
-          ]
-        }
-      }
-    }
     ];
 
     for (const pageData of pages) {
       await Page.findOneAndUpdate(
         { slug: pageData.slug },
-        pageData,
+        { $setOnInsert: pageData },
         { upsert: true, returnDocument: 'after' }
       );
     }

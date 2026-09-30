@@ -3,12 +3,23 @@ import unifiedWhatsAppService from '../services/whatsapp/unified-whatsapp.servic
 import BusinessAPIProvider from '../services/whatsapp/providers/business-api.provider.js';
 
 const businessApiProvider = new BusinessAPIProvider();
-import { getSheetsClient, getCalendarClient, getFormsClient, handleGoogleApiError } from './google-api-helper.js';
+import { getSheetsClient, getCalendarClient, getFormsClient, handleGoogleApiError, parseToDate } from './google-api-helper.js';
 import { handleSequenceReply } from './automated-response.service.js';
 import { PROVIDER_TYPES } from '../services/whatsapp/unified-whatsapp.service.js';
 import appointmentService from '../services/appointment.service.js';
 import automationCache from './automation-cache.js';
 import { v4 as uuidv4 } from 'uuid';
+
+const safeTrim = (str, maxLength) => {
+  if (typeof str !== 'string') return str;
+  let cleanStr = str
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+  return cleanStr.length > maxLength ? cleanStr.slice(0, maxLength) : cleanStr;
+};
 
 class AutomationEngine {
   constructor() {
@@ -311,6 +322,14 @@ class AutomationEngine {
         }
       }
 
+      // Helper to detect technical callback button/list clicks
+      const isTechnicalCallbackId = (msg) => {
+        if (typeof msg !== 'string') return false;
+        if (!msg.includes('___')) return false;
+        const parts = msg.split('___');
+        return parts.length >= 3;
+      };
+
       let bestFlowToExecute = null;
       let bestFlowWeight = 999;
 
@@ -350,6 +369,7 @@ class AutomationEngine {
 
       if (bestFlowToExecute) {
         console.log(`Executing flow: ${bestFlowToExecute.name} for message: ${effectiveMessage}`);
+        const isResuming = isTechnicalCallbackId(effectiveMessage);
         await this.executeFlow(bestFlowToExecute, {
           event_type: 'message_received',
           message: effectiveMessage,
@@ -362,7 +382,8 @@ class AutomationEngine {
           contactId: eventData.contactId || contact?._id?.toString() || null,
           contact,
           whatsappPhoneNumberId: eventData.whatsappPhoneNumberId,
-          timestamp: new Date()
+          timestamp: new Date(),
+          is_resuming: isResuming
         });
       }
     } catch (error) {
@@ -1795,11 +1816,12 @@ class AutomationEngine {
           address: location_params.address || this.processTemplateString(location_params.address || '', inputData)
         };
       } else {
-        if (message_body || message_template || node.parameters?.message || node.parameters?.bodyText) {
-          const rawMessage = message_body || message_template || node.parameters?.message || node.parameters?.bodyText;
-          const processedMessage = this.processTemplateString(rawMessage, inputData);
-          messageParams.messageText = processedMessage;
+        let rawMessage = message_body || message_template || node.parameters?.message || node.parameters?.bodyText || node.parameters?.question_message || node.parameters?.text || '';
+        if (!rawMessage && interactive_type === 'list' && list_params) {
+          rawMessage = list_params.body || list_params.header || '';
         }
+        const processedMessage = this.processTemplateString(rawMessage, inputData);
+        messageParams.messageText = processedMessage;
       }
       if (activeMediaUrl) {
         const resolvedUrl = businessApiProvider.getPublicMediaUrl(activeMediaUrl);
@@ -1822,23 +1844,23 @@ class AutomationEngine {
             const rawId = btn.id || `btn_${index + 1}`;
             const id = (flowPrefix && !rawId.startsWith(`${flowPrefix}___`)) ? `${flowPrefix}___${rawId}` : rawId;
             return {
-              title: this.processTemplateString(btn.title, inputData),
+              title: safeTrim(this.processTemplateString(btn.title, inputData), 20),
               id: id
             };
           });
         } else if (interactive_type === 'list' && list_params) {
           messageParams.listParams = {
-            header: this.processTemplateString(list_params.header || '', inputData),
-            body: this.processTemplateString(list_params.body || message_template || node.parameters?.message || node.parameters?.bodyText || '', inputData),
-            footer: this.processTemplateString(list_params.footer || '', inputData),
-            buttonTitle: this.processTemplateString(list_params.buttonTitle || 'Select', inputData),
-            sectionTitle: this.processTemplateString(list_params.sectionTitle || 'Options', inputData),
+            header: safeTrim(this.processTemplateString(list_params.header || '', inputData), 60),
+            body: safeTrim(this.processTemplateString(list_params.body || message_template || node.parameters?.message || node.parameters?.bodyText || '', inputData), 1024),
+            footer: safeTrim(this.processTemplateString(list_params.footer || '', inputData), 60),
+            buttonTitle: safeTrim(this.processTemplateString(list_params.buttonTitle || 'Select', inputData), 20),
+            sectionTitle: safeTrim(this.processTemplateString(list_params.sectionTitle || 'Options', inputData), 24),
             items: (list_params.items || []).map((item, index) => {
               const rawId = item.id || item.title || `item_${index + 1}`;
               const id = (flowPrefix && !rawId.startsWith(`${flowPrefix}___`)) ? `${flowPrefix}___${rawId}` : rawId;
               return {
-                title: this.processTemplateString(item.title, inputData),
-                description: this.processTemplateString(item.description || '', inputData),
+                title: safeTrim(this.processTemplateString(item.title, inputData), 24),
+                description: safeTrim(this.processTemplateString(item.description || '', inputData), 72),
                 id: id
               };
             })
@@ -1853,7 +1875,7 @@ class AutomationEngine {
           const id = (flowPrefix && !rawId.startsWith(`${flowPrefix}___`)) ? `${flowPrefix}___${rawId}` : rawId;
           return {
             id: id,
-            title: this.processTemplateString(btn.text || btn.title || '', inputData)
+            title: safeTrim(this.processTemplateString(btn.text || btn.title || '', inputData), 20)
           };
         });
       } else {
@@ -3565,6 +3587,22 @@ class AutomationEngine {
   async executeWaitForReplyNode(node, flow, inputData, executionLog) {
     const { variable_name = 'last_user_message' } = node.parameters || {};
 
+    if (inputData.is_resuming) {
+      let replyText = inputData.message || inputData.textContent || '';
+      if (typeof replyText === 'string' && replyText.includes('___')) {
+        const parts = replyText.split('___');
+        if (parts.length >= 3) {
+          replyText = parts.slice(2).join('___');
+        } else if (parts.length === 2) {
+          replyText = parts[1];
+        }
+      }
+      console.log(`[Wait For Reply Node] Resuming flow. Storing reply "${replyText}" in variable "${variable_name}" and proceeding immediately.`);
+      inputData[variable_name] = replyText;
+      delete inputData.is_resuming;
+      return { success: true, output: inputData };
+    }
+
     const nextNodes = this.getConnectedNodes(flow, node.id);
     const nextNodeId = nextNodes.length > 0 ? nextNodes[0].id : null;
 
@@ -3673,7 +3711,7 @@ class AutomationEngine {
         const parts = matchedRoute.split('___');
         if (parts.length >= 3) {
           const buttonNodeId = parts[1];
-          if (buttonNodeId !== waitingNode.id) {
+          if (waitingNode && waitingNode.type !== 'wait_for_reply' && buttonNodeId !== waitingNode.id) {
             console.log(`[Resume Execution] Button/List clicked belongs to node "${buttonNodeId}", but waiting for node "${waitingNode.id}". Skipping resume.`);
             return { success: false, notMatched: true };
           }
@@ -3687,6 +3725,18 @@ class AutomationEngine {
     // Priority: textContent (button label from platform) > fallback button param lookup > raw interactive_id > plain message
     const rawInteractiveId = eventData.interactive_id || null;
     let resolvedLabel = eventData.textContent || null;
+
+    // If no textContent but we have an interactive_id, try to extract the human-readable text from the ID
+    if (!resolvedLabel && rawInteractiveId) {
+      if (rawInteractiveId.includes('___')) {
+        const parts = rawInteractiveId.split('___');
+        if (parts.length >= 3) {
+          resolvedLabel = parts.slice(2).join('___');
+        } else if (parts.length === 2) {
+          resolvedLabel = parts[1];
+        }
+      }
+    }
 
     // If no textContent but we have an interactive_id, try to resolve the label from the waiting node's button/list params
     if (!resolvedLabel && rawInteractiveId && waitingNode) {
@@ -3747,7 +3797,7 @@ class AutomationEngine {
       interactive_id: rawInteractiveId,
       // Signal that we are mid-resume so processConnectedNodes skips auto-wait
       // (prevents Send Message branches from pausing again when flowing to ask_and_wait)
-      is_resuming: true
+      is_resuming: waitingNode && waitingNode.type !== 'wait_for_reply' && waitingNode.type !== 'ask_and_wait'
     };
 
     if (eventData.form_data) {
@@ -4784,24 +4834,21 @@ class AutomationEngine {
       const resolvedSummary = this.processTemplateString(summary || 'WhatsApp Scheduled Event', inputData);
       const resolvedDescription = this.processTemplateString(description || '', inputData);
       const resolvedStart = this.processTemplateString(start_time || new Date().toISOString(), inputData);
+      const start = parseToDate(resolvedStart);
 
       console.log(`[google_calendar] Resolved Summary: "${resolvedSummary}"`);
-      console.log(`[google_calendar] Resolved StartTime: "${resolvedStart}"`);
+      console.log(`[google_calendar] Resolved StartTime: "${resolvedStart}" (parsed: ${start.toISOString()})`);
 
       let resolvedEnd = this.processTemplateString(end_time || '', inputData);
-      if (!resolvedEnd) {
-        const start = new Date(resolvedStart);
-        start.setMinutes(start.getMinutes() + 30);
-        resolvedEnd = start.toISOString();
-      }
+      const end = resolvedEnd ? parseToDate(resolvedEnd) : new Date(start.getTime() + 30 * 60 * 1000);
 
       const response = await calendar.events.insert({
         calendarId: calendar_id,
         requestBody: {
           summary: resolvedSummary,
           description: resolvedDescription,
-          start: { dateTime: resolvedStart },
-          end: { dateTime: resolvedEnd }
+          start: { dateTime: start.toISOString() },
+          end: { dateTime: end.toISOString() }
         }
       });
 
@@ -4835,13 +4882,10 @@ class AutomationEngine {
       const resolvedSummary = this.processTemplateString(summary || 'Google Meet Scheduled Event', inputData);
       const resolvedDescription = this.processTemplateString(description || '', inputData);
       const resolvedStart = this.processTemplateString(start_time || new Date().toISOString(), inputData);
+      const start = parseToDate(resolvedStart);
 
       let resolvedEnd = this.processTemplateString(end_time || '', inputData);
-      if (!resolvedEnd) {
-        const start = new Date(resolvedStart);
-        start.setMinutes(start.getMinutes() + 30);
-        resolvedEnd = start.toISOString();
-      }
+      const end = resolvedEnd ? parseToDate(resolvedEnd) : new Date(start.getTime() + 30 * 60 * 1000);
 
       const response = await calendar.events.insert({
         calendarId: calendar_id,
@@ -4849,8 +4893,8 @@ class AutomationEngine {
         requestBody: {
           summary: resolvedSummary,
           description: resolvedDescription,
-          start: { dateTime: resolvedStart },
-          end: { dateTime: resolvedEnd },
+          start: { dateTime: start.toISOString() },
+          end: { dateTime: end.toISOString() },
           conferenceData: {
             createRequest: {
               requestId: `meet_${Date.now()}_${Math.random().toString(36).substring(7)}`,

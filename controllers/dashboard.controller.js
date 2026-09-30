@@ -9,6 +9,8 @@ import Tag from '../models/tag.model.js';
 import EcommerceOrder from '../models/ecommerce-order.model.js';
 import EcommerceProduct from '../models/ecommerce-product.model.js';
 import Role from '../models/role.model.js';
+import WhatsappWaba from '../models/whatsapp-waba.model.js';
+import EcommerceCatalog from '../models/ecommerce-catalog.model.js';
 
 const buildDateRange = (dateRange, startDate, endDate) => {
   if (!dateRange) {
@@ -69,6 +71,34 @@ const buildDateRange = (dateRange, startDate, endDate) => {
   return { start, end };
 };
 
+const getWorkspaceContext = async (userId, workspaceId) => {
+  if (!workspaceId || !mongoose.Types.ObjectId.isValid(workspaceId)) {
+    return { hasValidWorkspace: false };
+  }
+  const workspaceIdObj = new mongoose.Types.ObjectId(workspaceId);
+  const [workspaceContacts, wabas] = await Promise.all([
+    Contact.find({ workspace_id: workspaceIdObj, deleted_at: null }).select('_id').lean(),
+    WhatsappWaba.find({ workspace_id: workspaceIdObj, deleted_at: null }).select('_id').lean()
+  ]);
+  const contactIds = workspaceContacts.map(c => c._id);
+  const wabaIds = wabas.map(w => w._id);
+
+  const [catalogs, tags] = await Promise.all([
+    EcommerceCatalog.find({ waba_id: { $in: wabaIds }, deleted_at: null }).select('_id').lean(),
+    Contact.distinct('tags', { workspace_id: workspaceIdObj, deleted_at: null })
+  ]);
+  const catalogIds = catalogs.map(c => c._id);
+  
+  return {
+    hasValidWorkspace: true,
+    workspaceIdObj,
+    contactIds,
+    wabaIds,
+    catalogIds,
+    tagsInWorkspace: tags
+  };
+};
+
 export const getDashboardData = async (req, res) => {
   try {
     const userId = req.user?.owner_id;
@@ -78,6 +108,16 @@ export const getDashboardData = async (req, res) => {
     const createdAtFilter = range
       ? { created_at: { $gte: range.start, $lte: range.end } }
       : {};
+
+    const workspaceId = req.headers['x-workspace-id'] || req.query.workspace_id;
+    const {
+      hasValidWorkspace,
+      workspaceIdObj,
+      contactIds,
+      wabaIds,
+      catalogIds,
+      tagsInWorkspace
+    } = await getWorkspaceContext(userId, workspaceId);
 
     const [
       totalAgents,
@@ -103,6 +143,7 @@ export const getDashboardData = async (req, res) => {
         user_id: new mongoose.Types.ObjectId(userId),
         direction: 'outbound',
         deleted_at: null,
+        ...(hasValidWorkspace ? { contact_id: { $in: contactIds } } : {}),
         ...createdAtFilter
       }),
 
@@ -110,6 +151,7 @@ export const getDashboardData = async (req, res) => {
         user_id: new mongoose.Types.ObjectId(userId),
         direction: 'inbound',
         deleted_at: null,
+        ...(hasValidWorkspace ? { contact_id: { $in: contactIds } } : {}),
         ...createdAtFilter
       }),
 
@@ -119,6 +161,7 @@ export const getDashboardData = async (req, res) => {
             user_id: new mongoose.Types.ObjectId(userId),
             contact_id: { $exists: true, $ne: null },
             deleted_at: null,
+            ...(hasValidWorkspace ? { contact_id: { $in: contactIds } } : {}),
             ...(range
               ? { created_at: { $gte: range.start, $lte: range.end } }
               : {})
@@ -140,29 +183,34 @@ export const getDashboardData = async (req, res) => {
       Contact.countDocuments({
         created_by: new mongoose.Types.ObjectId(userId),
         deleted_at: null,
+        ...(hasValidWorkspace ? { workspace_id: workspaceIdObj } : {}),
         ...createdAtFilter
       }),
 
       AutomationFlow.countDocuments({
         user_id: new mongoose.Types.ObjectId(userId),
         deleted_at: null,
+        ...(hasValidWorkspace ? { workspace_id: workspaceIdObj } : {}),
         ...createdAtFilter
       }),
 
       Template.countDocuments({
         user_id: new mongoose.Types.ObjectId(userId),
+        ...(hasValidWorkspace ? { waba_id: { $in: wabaIds } } : {}),
         ...createdAtFilter
       }),
 
       Campaign.countDocuments({
         user_id: new mongoose.Types.ObjectId(userId),
         deleted_at: null,
+        ...(hasValidWorkspace ? { workspace_id: workspaceIdObj } : {}),
         ...createdAtFilter
       }),
 
       Tag.countDocuments({
         created_by: new mongoose.Types.ObjectId(userId),
         deleted_at: null,
+        ...(hasValidWorkspace ? { _id: { $in: tagsInWorkspace } } : {}),
         ...createdAtFilter
       })
     ]);
@@ -172,6 +220,7 @@ export const getDashboardData = async (req, res) => {
         $match: {
           created_by: new mongoose.Types.ObjectId(userId),
           deleted_at: null,
+          ...(hasValidWorkspace ? { workspace_id: workspaceIdObj } : {}),
           ...(range
             ? { created_at: { $gte: range.start, $lte: range.end } }
             : {})
@@ -210,6 +259,7 @@ export const getDashboardData = async (req, res) => {
         $match: {
           user_id: new mongoose.Types.ObjectId(userId),
           deleted_at: null,
+          ...(hasValidWorkspace ? { contact_id: { $in: contactIds } } : {}),
           created_at: range
             ? { $gte: range.start, $lte: range.end }
             : {
@@ -241,6 +291,7 @@ export const getDashboardData = async (req, res) => {
         $match: {
           user_id: new mongoose.Types.ObjectId(userId),
           deleted_at: null,
+          ...(hasValidWorkspace ? { workspace_id: workspaceIdObj } : {}),
           ...(range
             ? { created_at: { $gte: range.start, $lte: range.end } }
             : {})
@@ -272,6 +323,7 @@ export const getDashboardData = async (req, res) => {
     ] = await Promise.all([
       EcommerceOrder.countDocuments({
         user_id: new mongoose.Types.ObjectId(userId),
+        ...(hasValidWorkspace ? { contact_id: { $in: contactIds } } : {}),
         ...(range
           ? { created_at: { $gte: range.start, $lte: range.end } }
           : {})
@@ -281,6 +333,7 @@ export const getDashboardData = async (req, res) => {
         {
           $match: {
             user_id: new mongoose.Types.ObjectId(userId),
+            ...(hasValidWorkspace ? { contact_id: { $in: contactIds } } : {}),
             ...(range
               ? { created_at: { $gte: range.start, $lte: range.end } }
               : {})
@@ -298,6 +351,7 @@ export const getDashboardData = async (req, res) => {
         {
           $match: {
             user_id: new mongoose.Types.ObjectId(userId),
+            ...(hasValidWorkspace ? { contact_id: { $in: contactIds } } : {}),
             ...(range
               ? { created_at: { $gte: range.start, $lte: range.end } }
               : {})
@@ -323,6 +377,7 @@ export const getDashboardData = async (req, res) => {
 
       EcommerceProduct.countDocuments({
         user_id: new mongoose.Types.ObjectId(userId),
+        ...(hasValidWorkspace ? { catalog_id: { $in: catalogIds } } : {}),
         deleted_at: null
       })
     ]);
@@ -335,12 +390,14 @@ export const getDashboardData = async (req, res) => {
       Template.countDocuments({
         user_id: new mongoose.Types.ObjectId(userId),
         status: 'approved',
+        ...(hasValidWorkspace ? { waba_id: { $in: wabaIds } } : {}),
         ...createdAtFilter
       }),
 
       Template.countDocuments({
         user_id: new mongoose.Types.ObjectId(userId),
         status: 'rejected',
+        ...(hasValidWorkspace ? { waba_id: { $in: wabaIds } } : {}),
         ...createdAtFilter
       }),
 
@@ -348,6 +405,7 @@ export const getDashboardData = async (req, res) => {
         {
           $match: {
             user_id: new mongoose.Types.ObjectId(userId),
+            ...(hasValidWorkspace ? { waba_id: { $in: wabaIds } } : {}),
             ...(range
               ? { created_at: { $gte: range.start, $lte: range.end } }
               : {})
@@ -447,6 +505,15 @@ export const getDashboardCounts = async (req, res) => {
       ? { created_at: { $gte: range.start, $lte: range.end } }
       : {};
 
+    const workspaceId = req.headers['x-workspace-id'] || req.query.workspace_id;
+    const {
+      hasValidWorkspace,
+      workspaceIdObj,
+      contactIds,
+      wabaIds,
+      tagsInWorkspace
+    } = await getWorkspaceContext(userId, workspaceId);
+
     const [
       totalAgents,
       totalMessagesSent,
@@ -470,12 +537,14 @@ export const getDashboardCounts = async (req, res) => {
         user_id: new mongoose.Types.ObjectId(userId),
         direction: 'outbound',
         deleted_at: null,
+        ...(hasValidWorkspace ? { contact_id: { $in: contactIds } } : {}),
         ...createdAtFilter
       }),
       Message.countDocuments({
         user_id: new mongoose.Types.ObjectId(userId),
         direction: 'inbound',
         deleted_at: null,
+        ...(hasValidWorkspace ? { contact_id: { $in: contactIds } } : {}),
         ...createdAtFilter
       }),
       Message.aggregate([
@@ -484,6 +553,7 @@ export const getDashboardCounts = async (req, res) => {
             user_id: new mongoose.Types.ObjectId(userId),
             contact_id: { $exists: true, $ne: null },
             deleted_at: null,
+            ...(hasValidWorkspace ? { contact_id: { $in: contactIds } } : {}),
             ...(range
               ? { created_at: { $gte: range.start, $lte: range.end } }
               : {})
@@ -504,25 +574,30 @@ export const getDashboardCounts = async (req, res) => {
       Contact.countDocuments({
         created_by: new mongoose.Types.ObjectId(userId),
         deleted_at: null,
+        ...(hasValidWorkspace ? { workspace_id: workspaceIdObj } : {}),
         ...createdAtFilter
       }),
       AutomationFlow.countDocuments({
         user_id: new mongoose.Types.ObjectId(userId),
         deleted_at: null,
+        ...(hasValidWorkspace ? { workspace_id: workspaceIdObj } : {}),
         ...createdAtFilter
       }),
       Template.countDocuments({
         user_id: new mongoose.Types.ObjectId(userId),
+        ...(hasValidWorkspace ? { waba_id: { $in: wabaIds } } : {}),
         ...createdAtFilter
       }),
       Campaign.countDocuments({
         user_id: new mongoose.Types.ObjectId(userId),
         deleted_at: null,
+        ...(hasValidWorkspace ? { workspace_id: workspaceIdObj } : {}),
         ...createdAtFilter
       }),
       Tag.countDocuments({
         created_by: new mongoose.Types.ObjectId(userId),
         deleted_at: null,
+        ...(hasValidWorkspace ? { _id: { $in: tagsInWorkspace } } : {}),
         ...createdAtFilter
       })
     ]);

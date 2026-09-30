@@ -20,6 +20,6 @@ router.post('/bulk-delete', authenticate, checkPermission('delete.widget'), widg
 
 router.get('/', authenticate, checkPermission('view.widget'), widgetController.getAllWidgets);
 router.get('/phone/:phoneNumber', authenticate, checkPermission('view.widget'), widgetController.getWidgetByPhoneNumber);
-router.get('/:id', authenticate, checkPermission('view.widget'), widgetController.getWidgetById);
+router.get('/:id', widgetController.getWidgetById);
 
 export default router;

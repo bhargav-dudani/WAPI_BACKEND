@@ -41,12 +41,17 @@ const aiModelSchema = new mongoose.Schema(
             reply_suggestion: { type: Boolean, default: true }
         },
         config: {
-            max_tokens: { type: Number, default: 1000 },
-            temperature: { type: Number, default: 0.7 },
-            top_p: { type: Number, default: 1 },
-            frequency_penalty: { type: Number, default: 0 },
-            presence_penalty: { type: Number, default: 0 },
-            api_key: { type: String, default: null }
+            type: mongoose.Schema.Types.Mixed,
+            default: {
+                max_tokens: 1000,
+                temperature: 0.7,
+                top_p: 1,
+                frequency_penalty: 0,
+                presence_penalty: 0,
+                api_key: null,
+                payload_type: 'json',
+                payload: ''
+            }
         },
         encrypted_config: {
             type: Map,
@@ -98,5 +103,22 @@ const aiModelSchema = new mongoose.Schema(
 aiModelSchema.index({ provider: 1, status: 1 });
 aiModelSchema.index({ name: 1, deleted_at: 1 });
 aiModelSchema.index({ status: 1, deleted_at: 1 });
+
+aiModelSchema.pre('validate', function(next) {
+  if (!this.api_endpoint && this.provider && this.provider !== 'custom') {
+    const defaults = {
+      openai: 'https://api.openai.com/v1/chat/completions',
+      google: 'https://generativelanguage.googleapis.com/v1',
+      anthropic: 'https://api.anthropic.com/v1/messages',
+      xai: 'https://api.x.ai/v1/chat/completions',
+      deepseek: 'https://api.deepseek.com/chat/completions',
+      groq: 'https://api.groq.com/openai/v1/chat/completions',
+      mistral: 'https://api.mistral.ai/v1/chat/completions',
+      cohere: 'https://api.cohere.ai/v1/chat',
+    };
+    this.api_endpoint = defaults[this.provider] || '';
+  }
+  next();
+});
 
 export default mongoose.model('AIModel', aiModelSchema);

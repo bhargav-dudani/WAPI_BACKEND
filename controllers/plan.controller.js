@@ -1,4 +1,4 @@
-import { Plan, Setting } from '../models/index.js';
+import { Plan, Setting, LandingPage } from '../models/index.js';
 import mongoose from 'mongoose';
 import { StripeService, RazorpayService, getRazorpay, PayPalService } from '../utils/payment-gateway.service.js';
 
@@ -652,6 +652,15 @@ export const deletePlan = async (req, res) => {
             { _id: { $in: foundIds } },
             { $set: { deleted_at: new Date() } }
         );
+
+        try {
+            await LandingPage.updateMany(
+                {},
+                { $pull: { "pricing_section.plans": { _id: { $in: foundIds } } } }
+            );
+        } catch (pullError) {
+            console.error('Error removing deleted plans from landing page:', pullError);
+        }
 
         const response = {
             success: true,

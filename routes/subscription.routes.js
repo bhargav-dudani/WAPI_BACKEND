@@ -23,7 +23,11 @@ import {
     assignPlanToUser,
     downloadInvoice,
     overrideSubscriptionLimits,
-    resetSubscriptionLimits
+    resetSubscriptionLimits,
+    getMyBillingHistory,
+    createMidtransSubscription,
+    createMollieSubscription,
+    handleRazorpaySubscriptionCallback
 } from '../controllers/subscription.controller.js';
 import { authenticateUser, authorizeAdmin, authenticate } from '../middlewares/auth.js';
 import { checkPermission } from '../middlewares/permission.js';
@@ -32,17 +36,23 @@ const router = express.Router();
 
 import { uploader } from '../utils/upload.js';
 
-router.get('/my-subscription', authenticate, checkPermission('view.subscriptions'), getUserSubscription);
+router.post('/razorpay/callback', handleRazorpaySubscriptionCallback);
+router.get('/razorpay/callback', handleRazorpaySubscriptionCallback);
+
+router.get('/my-subscription', authenticate, getUserSubscription);
+router.get('/my-billing-history', authenticate, checkPermission('view.subscriptions'), getMyBillingHistory);
 router.get('/usage', authenticate, checkPermission('view.subscriptions'), getSubscriptionUsage);
 router.get('/checkout-url', authenticate, checkPermission('view.subscriptions'), getSubscriptionCheckoutUrl);
 router.post('/create-stripe', authenticate, checkPermission('create.subscriptions'), createStripeSubscription);
 router.post('/create-razorpay', authenticate, checkPermission('create.subscriptions'), createRazorpaySubscription);
 router.post('/create-paypal', authenticate, checkPermission('create.subscriptions'), createPayPalSubscription);
+router.post('/create-midtrans', authenticate, checkPermission('create.subscriptions'), createMidtransSubscription);
+router.post('/create-mollie', authenticate, checkPermission('create.subscriptions'), createMollieSubscription);
 router.post('/create-manual', authenticate, checkPermission('create.subscriptions'), uploader('receipts').single('transaction_receipt'), createManualSubscription);
 router.get('/:id/manage-portal', authenticate, checkPermission('view.subscriptions'), getManagePortalUrl);
 router.post('/:id/cancel', authenticate, checkPermission('update.subscriptions'), cancelSubscription);
 router.post('/:id/resume', authenticate, checkPermission('update.subscriptions'), resumeSubscription);
-router.post('/:id/change-plan', authenticate, checkPermission('update.subscriptions'), changeSubscriptionPlan);
+router.post('/:id/change-plan', authenticate, checkPermission('update.subscriptions'), uploader('receipts').single('transaction_receipt'), changeSubscriptionPlan);
 router.get('/payment/:id/invoice', authenticate, checkPermission('view.subscriptions'), downloadInvoice);
 
 router.get('/', authenticate, checkPermission('view.subscriptions'), getAllSubscriptions);

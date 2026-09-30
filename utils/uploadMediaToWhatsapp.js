@@ -1,6 +1,8 @@
 import axios from "axios";
 import FormData from "form-data";
 
+const WHATSAPP_API_VERSION = process.env.WHATSAPP_API_VERSION || 'v19.0';
+
 async function uploadMediaToWhatsApp({
   phone_number_id,
   access_token,
@@ -60,7 +62,7 @@ async function uploadMediaToWhatsApp({
 
   try {
     const response = await axios.post(
-      `https://graph.facebook.com/v19.0/${phone_number_id}/media`,
+      `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${phone_number_id}/media`,
       form,
       {
         headers: {
@@ -96,7 +98,7 @@ function getWhatsAppTypeFromMime(mime) {
 
 async function getWhatsAppMediaUrl(mediaId, access_token) {
   const res = await axios.get(
-    `https://graph.facebook.com/v19.0/${mediaId}`,
+    `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${mediaId}`,
     {
       headers: {
         Authorization: `Bearer ${access_token}`

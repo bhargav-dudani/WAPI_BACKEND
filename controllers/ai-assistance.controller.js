@@ -24,6 +24,8 @@ const LANGUAGE_MAP = {
   de: 'German',
   it: 'Italian',
   pt: 'Portuguese',
+  pt_BR: 'Portuguese (Brazil)',
+  pt_PT: 'Portuguese (Portugal)',
   ru: 'Russian',
   ja: 'Japanese',
   ko: 'Korean',

@@ -1,6 +1,7 @@
 import { LandingPage, Plan, Testimonial, Faq, Setting } from '../models/index.js';
 import { uploader } from '../utils/upload.js';
 import mongoose from 'mongoose';
+import { deleteOrphanFiles } from '../utils/aws-storage.js';
 
 const getValidId = (item) => {
   if (!item) return null;
@@ -14,6 +15,30 @@ const getValidId = (item) => {
     }
   }
   return null;
+};
+
+const populateLandingPageDetails = async (id) => {
+  const landingPage = await LandingPage.findById(id)
+    .populate({
+      path: 'pricing_section.plans._id',
+      match: { deleted_at: null },
+      select: '_id name price features enabled_features is_featured billing_cycle',
+      populate: {
+        path: 'currency taxes',
+      }
+    })
+    .populate('testimonials_section.testimonials._id', '_id title description user_name user_post user_image status rating')
+    .populate('faq_section.faqs._id', '_id title description status');
+
+  if (!landingPage) return null;
+
+  const landingPageObj = landingPage.toObject();
+  if (landingPageObj.pricing_section && landingPageObj.pricing_section.plans) {
+    landingPageObj.pricing_section.plans = landingPageObj.pricing_section.plans.filter(
+      plan => plan._id !== null && plan._id !== undefined
+    );
+  }
+  return landingPageObj;
 };
 
 const getLandingPage = async (req, res) => {
@@ -215,23 +240,14 @@ const getLandingPage = async (req, res) => {
       await landingPage.save();
     }
 
-    const populatedLandingPage = await LandingPage.findById(landingPage._id)
-      .populate({
-        path: 'pricing_section.plans._id',
-        select: '_id name price features is_featured billing_cycle',
-        populate: {
-          path: 'currency taxes',
-        }
-      })
-      .populate('testimonials_section.testimonials._id', '_id title description user_name user_post user_image status rating')
-      .populate('faq_section.faqs._id', '_id title description status'); ``
+    const populatedLandingPageData = await populateLandingPageDetails(landingPage._id);
 
     const setting = await Setting.findOne().lean();
 
     res.status(200).json({
       success: true,
       data: {
-        ...populatedLandingPage.toObject(),
+        ...populatedLandingPageData,
         landing_page_enabled: setting?.landing_page_enabled
       }
     });
@@ -341,7 +357,11 @@ const updateLandingPage = async (req, res) => {
       landingPage = new LandingPage(updateData);
       await landingPage.save();
     } else {
-      await LandingPage.findByIdAndUpdate(landingPage._id, updateData, { returnDocument: 'after' });
+      const oldLandingPage = landingPage.toObject();
+      const updatedLanding = await LandingPage.findByIdAndUpdate(landingPage._id, updateData, { new: true });
+      if (updatedLanding) {
+        await deleteOrphanFiles(oldLandingPage, updatedLanding.toObject());
+      }
     }
 
     if (landing_page_enabled !== undefined) {
@@ -351,10 +371,7 @@ const updateLandingPage = async (req, res) => {
         { upsert: true, returnDocument: 'after' }
       );
     }
-    const updatedLandingPage = await LandingPage.findById(landingPage._id)
-      .populate('pricing_section.plans._id', '_id name price features is_featured billing_cycle')
-      .populate('testimonials_section.testimonials._id')
-      .populate('faq_section.faqs._id');
+    const updatedLandingPageData = await populateLandingPageDetails(landingPage._id);
 
     const setting = await Setting.findOne().lean();
 
@@ -362,7 +379,7 @@ const updateLandingPage = async (req, res) => {
       success: true,
       message: 'Landing page updated successfully',
       data: {
-        ...updatedLandingPage.toObject(),
+        ...updatedLandingPageData,
         landing_page_enabled: setting?.landing_page_enabled
       }
     });

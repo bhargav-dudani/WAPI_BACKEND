@@ -3,6 +3,7 @@ import Razorpay from 'razorpay';
 import crypto from 'crypto';
 import axios from 'axios';
 import { Setting } from '../models/index.js';
+import { createMollieClient } from '@mollie/api-client';
 
 let cachedStripe = null;
 let cachedStripeKey = null;
@@ -479,10 +480,12 @@ export const RazorpayService = {
     },
 
 
-    verifyPaymentSignature(razorpayPaymentId, razorpaySubscriptionId, razorpaySignature) {
+    async verifyPaymentSignature(razorpayPaymentId, razorpaySubscriptionId, razorpaySignature) {
         try {
+            const setting = await Setting.findOne().lean();
+            const secret = setting?.razorpay_key_secret || process.env.RAZORPAY_KEY_SECRET;
             const generatedSignature = crypto
-                .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+                .createHmac('sha256', secret)
                 .update(`${razorpayPaymentId}|${razorpaySubscriptionId}`)
                 .digest('hex');
 
@@ -493,9 +496,10 @@ export const RazorpayService = {
         }
     },
 
-    verifyWebhookSignature(body, signature) {
+    async verifyWebhookSignature(body, signature) {
         try {
-            const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+            const setting = await Setting.findOne().lean();
+            const secret = setting?.razorpay_webhook_secret || process.env.RAZORPAY_WEBHOOK_SECRET;
             if (!secret) return false;
 
             const bodyString = typeof body === 'string'
@@ -520,7 +524,7 @@ export const RazorpayService = {
         try {
             const currencyValue = plan.currency?.code || plan.currency || 'INR';
             const currency = currencyValue.toString().toUpperCase();
-            console.log("currency" , currency)
+            console.log("currency", currency)
             const amount = Math.max(100, Math.round((plan.price || 0) * 100));
             const period = (plan.billing_cycle === 'yearly' || plan.billing_cycle === 'lifetime') ? 'yearly' : 'monthly';
             const interval = 1;
@@ -721,6 +725,9 @@ export const PayPalService = {
     async createSubscription(paypalPlanId, userId, returnUrl, cancelUrl) {
         try {
             const { token, apiUrl } = await this.getAccessToken();
+            const setting = await Setting.findOne().lean();
+            const brandName = setting?.app_name || 'Wapi';
+
             const response = await axios({
                 url: `${apiUrl}/v1/billing/subscriptions`,
                 method: 'post',
@@ -733,7 +740,7 @@ export const PayPalService = {
                     plan_id: paypalPlanId,
                     custom_id: userId.toString(),
                     application_context: {
-                        brand_name: 'Wapi',
+                        brand_name: brandName,
                         locale: 'en-US',
                         shipping_preference: 'NO_SHIPPING',
                         user_action: 'SUBSCRIBE_NOW',
@@ -764,6 +771,11 @@ export const PayPalService = {
             return true;
         } catch (error) {
             console.error('Error cancelling PayPal subscription:', error.response?.data || error.message);
+            const errData = error.response?.data;
+            if (error.response?.status === 404 || errData?.name === 'RESOURCE_NOT_FOUND' || errData?.details?.some(d => d.issue === 'INVALID_RESOURCE_ID')) {
+                console.warn(`[PayPalService] Subscription ${subscriptionId} not found on PayPal (404 / RESOURCE_NOT_FOUND). Proceeding with local cancellation.`);
+                return true;
+            }
             throw new Error('Failed to cancel PayPal subscription');
         }
     },
@@ -851,4 +863,261 @@ export const PayPalService = {
     }
 };
 
-export { stripe, razorpay };
+const midtrans = {
+    async getApiUrl() {
+        const setting = await Setting.findOne().lean();
+        const mode = setting?.midtrans_mode || 'sandbox';
+        return mode === 'live' ? 'https://app.midtrans.com/snap/v1/transactions' : 'https://app.sandbox.midtrans.com/snap/v1/transactions';
+    },
+
+    async getCoreApiUrl() {
+        const setting = await Setting.findOne().lean();
+        const mode = setting?.midtrans_mode || 'sandbox';
+        return mode === 'live' ? 'https://api.midtrans.com' : 'https://api.sandbox.midtrans.com';
+    },
+
+    async getAuthHeader() {
+        const setting = await Setting.findOne().lean();
+        const serverKey = setting?.midtrans_server_key;
+        if (!serverKey) throw new Error('Midtrans server key not configured');
+        return `Basic ${Buffer.from(serverKey + ':').toString('base64')}`;
+    },
+
+    async createPaymentLink(plan, userId, email, phone, returnUrl, cancelUrl) {
+        try {
+            const snapUrl = await this.getApiUrl();
+            const authHeader = await this.getAuthHeader();
+
+            const currencyValue = plan.currency?.code || plan.currency || 'IDR';
+            const amount = Math.max(100, Math.round((plan.price || 0)));
+
+            // order_id must be unique for each transaction
+            const orderId = `sub-${userId}-${Date.now()}`;
+
+            const payload = {
+                transaction_details: {
+                    order_id: orderId,
+                    gross_amount: amount
+                },
+                credit_card: {
+                    secure: true,
+                    save_card: true
+                },
+                item_details: [{
+                    id: plan._id.toString(),
+                    price: amount,
+                    quantity: 1,
+                    name: plan.name
+                }],
+                customer_details: {
+                    email: email,
+                    phone: phone
+                },
+                callbacks: {
+                    finish: returnUrl,
+                    error: cancelUrl,
+                    unfinish: cancelUrl
+                },
+                custom_field1: userId.toString(),
+                custom_field2: plan._id.toString()
+            };
+
+            const response = await axios.post(snapUrl, payload, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Authorization': authHeader
+                }
+            });
+
+            return {
+                id: orderId,
+                payment_link: response.data.redirect_url
+            };
+        } catch (error) {
+            console.error('Error creating Midtrans Snap link:', error.response?.data || error.message);
+            throw new Error('Failed to create Midtrans payment link');
+        }
+    },
+
+    async createSubscription(token, plan, userId) {
+        try {
+            const apiUrl = await this.getCoreApiUrl();
+            const authHeader = await this.getAuthHeader();
+
+            const currencyValue = plan.currency?.code || plan.currency || 'IDR';
+            const amount = plan.price;
+
+            const response = await axios({
+                url: `${apiUrl}/v1/subscriptions`,
+                method: 'post',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': authHeader
+                },
+                data: {
+                    name: plan.name,
+                    amount: amount.toString(),
+                    currency: currencyValue,
+                    payment_type: 'credit_card',
+                    token: token,
+                    schedule: {
+                        interval: plan.billing_cycle === 'yearly' ? 12 : 1,
+                        interval_unit: 'month'
+                    },
+                    metadata: {
+                        user_id: userId.toString(),
+                        plan_id: plan._id.toString()
+                    }
+                }
+            });
+            return response.data;
+        } catch (error) {
+            console.error('Error creating Midtrans subscription:', error.response?.data || error.message);
+            throw new Error('Failed to create Midtrans subscription');
+        }
+    },
+
+    async cancelSubscription(subscriptionId) {
+        try {
+            const apiUrl = await this.getCoreApiUrl();
+            const authHeader = await this.getAuthHeader();
+
+            await axios({
+                url: `${apiUrl}/v1/subscriptions/${subscriptionId}/disable`,
+                method: 'post',
+                headers: {
+                    'Authorization': authHeader,
+                    'Content-Type': 'application/json'
+                }
+            });
+            return true;
+        } catch (error) {
+            console.error('Error disabling Midtrans subscription:', error.response?.data || error.message);
+            throw new Error('Failed to disable Midtrans subscription');
+        }
+    },
+
+    async resumeSubscription(subscriptionId) {
+        try {
+            const apiUrl = await this.getCoreApiUrl();
+            const authHeader = await this.getAuthHeader();
+
+            await axios({
+                url: `${apiUrl}/v1/subscriptions/${subscriptionId}/enable`,
+                method: 'post',
+                headers: {
+                    'Authorization': authHeader,
+                    'Content-Type': 'application/json'
+                }
+            });
+            return true;
+        } catch (error) {
+            console.error('Error enabling Midtrans subscription:', error.response?.data || error.message);
+            throw new Error('Failed to enable Midtrans subscription');
+        }
+    },
+
+    async getSubscription(subscriptionId) {
+        try {
+            const apiUrl = await this.getCoreApiUrl();
+            const authHeader = await this.getAuthHeader();
+
+            const response = await axios({
+                url: `${apiUrl}/v1/subscriptions/${subscriptionId}`,
+                method: 'get',
+                headers: {
+                    'Authorization': authHeader,
+                    'Content-Type': 'application/json'
+                }
+            });
+            return response.data;
+        } catch (error) {
+            console.error('Error retrieving Midtrans subscription:', error.response?.data || error.message);
+            throw new Error('Failed to retrieve Midtrans subscription');
+        }
+    },
+
+    verifyPaymentSignature(orderId, statusCode, grossAmount, serverKey, signatureKey) {
+        const generatedSignature = crypto
+            .createHash('sha512')
+            .update(orderId + statusCode + grossAmount + serverKey)
+            .digest('hex');
+        return generatedSignature === signatureKey;
+    }
+};
+
+let cachedMollieClient = null;
+let cachedMollieApiKey = null;
+
+const mollie = {
+    async getClient() {
+        const setting = await Setting.findOne().lean();
+        const apiKey = setting?.mollie_api_key || process.env.MOLLIE_API_KEY;
+
+        if (!apiKey || apiKey.includes('_your_')) return null;
+
+        if (cachedMollieClient && cachedMollieApiKey === apiKey) {
+            return cachedMollieClient;
+        }
+
+        cachedMollieApiKey = apiKey;
+        cachedMollieClient = createMollieClient({ apiKey });
+        return cachedMollieClient;
+    },
+
+    async createOrGetCustomer(user) {
+        const client = await this.getClient();
+        if (!client) throw new Error('Mollie is not configured');
+
+        let customer;
+        if (user.mollie_customer_id) {
+            try {
+                customer = await client.customers.get(user.mollie_customer_id);
+            } catch (err) {
+                // Not found
+            }
+        }
+
+        if (!customer) {
+            customer = await client.customers.create({
+                name: user.name,
+                email: user.email,
+            });
+        }
+        return customer;
+    },
+
+    async createPaymentLink(customerId, plan, webhookUrl, redirectUrl) {
+        const client = await this.getClient();
+        if (!client) throw new Error('Mollie is not configured');
+
+        const payment = await client.payments.create({
+            amount: {
+                currency: process.env.CURRENCY || 'USD',
+                value: parseFloat(plan.price).toFixed(2),
+            },
+            customerId: customerId,
+            sequenceType: 'first',
+            description: `First payment for ${plan.name}`,
+            redirectUrl: redirectUrl || (process.env.FRONTEND_URL + '/subscription'),
+            webhookUrl: webhookUrl,
+        });
+
+        return payment;
+    },
+
+    async cancelSubscription(customerId, subscriptionId) {
+        const client = await this.getClient();
+        if (!client) throw new Error('Mollie is not configured');
+
+        try {
+            return await client.customers_subscriptions.cancel(subscriptionId, { customerId });
+        } catch (e) {
+            console.error('Mollie cancel error:', e.message);
+            return null;
+        }
+    }
+};
+
+export { stripe, razorpay, midtrans, mollie };

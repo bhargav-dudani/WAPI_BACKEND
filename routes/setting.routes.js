@@ -9,8 +9,10 @@ import {
   getRazorpaySettings,
   updatePayPalSettings,
   getPayPalSettings,
-  updateGoogleSettings,
-  getGoogleSettings
+  getMidtransSettings,
+  updateMidtransSettings,
+  getMollieSettings,
+  updateMollieSettings
 } from "../controllers/setting.controller.js";
 import { logCookieConsent } from "../controllers/cookie-log.controller.js";
 import { authenticateUser, authorizeAdmin, authenticate } from "../middlewares/auth.js";
@@ -61,8 +63,13 @@ router
   .put(checkPermission('update.settings'), updatePayPalSettings);
 
 router
-  .route("/google")
-  .get(checkPermission('view.settings'), getGoogleSettings)
-  .put(checkPermission('update.settings'), updateGoogleSettings);
+  .route("/midtrans")
+  .get(checkPermission('view.settings'), getMidtransSettings)
+  .put(checkPermission('update.settings'), updateMidtransSettings);
+
+router
+  .route("/mollie")
+  .get(checkPermission('view.settings'), getMollieSettings)
+  .put(checkPermission('update.settings'), updateMollieSettings);
 
 export default router;

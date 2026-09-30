@@ -2,7 +2,7 @@ import { Page } from '../models/index.js';
 import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
-import { deleteFile } from '../utils/aws-storage.js';
+import { deleteFile, deleteOrphanFiles } from '../utils/aws-storage.js';
 
 const SORT_ORDER = {
     ASC: 1,
@@ -237,6 +237,7 @@ export const updatePage = async (req, res) => {
             await cleanupFiles(req.files);
             return res.status(404).json({ success: false, message: 'Page not found' });
         }
+        const oldPageObj = page.toObject();
 
         const validation = validatePageData(updateData, page.slug);
         if (!validation.isValid) {
@@ -289,6 +290,7 @@ export const updatePage = async (req, res) => {
         if (updateData.status !== undefined) page.status = updateData.status;
 
         await page.save();
+        await deleteOrphanFiles(oldPageObj, page.toObject());
 
         if (req.file && oldMetaImage && oldMetaImage !== page.meta_image) {
             await deleteFile(oldMetaImage);
@@ -330,6 +332,7 @@ export const deletePages = async (req, res) => {
         }
 
         for (const page of pages) {
+            await deleteOrphanFiles(page.toObject(), {});
             if (page.meta_image) {
                 await deleteFile(page.meta_image);
             }

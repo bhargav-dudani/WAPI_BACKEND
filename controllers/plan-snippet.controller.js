@@ -111,7 +111,7 @@ export const getSnippetData = async (req, res) => {
             .populate({
                 path: 'plan_ids',
                 match: { is_active: true, deleted_at: null },
-                select: '_id name slug price billing_cycle description is_featured features',
+                select: '_id name slug price billing_cycle description is_featured features enabled_features',
                 populate: { path: 'currency', select: 'code symbol' }
             })
             .lean();

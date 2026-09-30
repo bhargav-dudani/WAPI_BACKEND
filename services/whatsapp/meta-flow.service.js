@@ -13,6 +13,7 @@ class MetaFlowService {
             let flowId = nfmReply.flow_id || "";
             const flowToken = nfmReply.flow_token || "";
             const responseJsonStr = nfmReply.response_json || "{}";
+            console.log("responseJsonStr", responseJsonStr);
             let data = {};
             try {
                 data = JSON.parse(responseJsonStr);

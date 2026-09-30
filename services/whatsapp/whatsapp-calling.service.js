@@ -3,7 +3,7 @@ import axios from 'axios';
 import { WhatsappPhoneNumber } from '../../models/index.js';
 import webrtcService from './webrtc.service.js';
 
-const WHATSAPP_API_VERSION = 'v19.0';
+const WHATSAPP_API_VERSION = process.env.WHATSAPP_API_VERSION || 'v19.0';
 const WHATSAPP_GRAPH_API_APP_URL = 'https://graph.facebook.com';
 
 class WhatsappCallingService {
@@ -68,7 +68,7 @@ class WhatsappCallingService {
     }
 
     async connectOutboundCall(phoneNumberId, callId, sdpAnswer, agent, contact, callLog) {
-
+      
         return webrtcService.connectOutboundCall(callId, sdpAnswer, agent, contact, callLog);
     }
 
@@ -106,6 +106,7 @@ class WhatsappCallingService {
                     'Content-Type': 'application/json'
                 }
             });
+            console.log("response", response.data);
             return response.data;
         } catch (error) {
             console.error(`Error updating call settings for ${phoneNumberId}:`, error.response?.data || error.message);

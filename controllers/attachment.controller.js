@@ -67,9 +67,21 @@ export const createAttachment = async (req, res) => {
     const attachments = [];
 
     for (const file of req.files) {
-      const isS3 = file.path.startsWith('http');
-      const relativePath = isS3 ? file.path : `/${file.destination}/${file.filename}`.replace(/\\/g, '/');
-      const absoluteUrl = isS3 ? file.path : `${req.protocol}://${req.get('host')}${relativePath}`;
+      const isS3 = file.path && file.path.startsWith('http');
+      let relativePath = isS3 ? file.path : (file.path || `/${file.destination}/${file.filename}`);
+      if (!isS3) {
+        relativePath = relativePath.replace(/\\/g, '/');
+        if (relativePath.includes('/uploads/')) {
+          relativePath = relativePath.substring(relativePath.indexOf('/uploads/'));
+        } else if (relativePath.includes('uploads/')) {
+          relativePath = '/' + relativePath.substring(relativePath.indexOf('uploads/'));
+        } else if (!relativePath.startsWith('/')) {
+          relativePath = '/' + relativePath;
+        }
+      }
+      const rawBaseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+      const baseUrl = rawBaseUrl.endsWith('/') ? rawBaseUrl.slice(0, -1) : rawBaseUrl;
+      const absoluteUrl = isS3 ? file.path : `${baseUrl}${relativePath}`;
 
       const attachmentData = {
         fileName: file.originalname,
@@ -140,7 +152,7 @@ export const getAttachments = async (req, res) => {
 
     const total = await Attachment.countDocuments(filter);
 
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
 
     const formattedAttachments = attachments.map(att => {
       let fileUrl = att.fileUrl;
@@ -203,7 +215,8 @@ export const getAttachmentById = async (req, res) => {
       });
     }
 
-    const absoluteUrl = `${req.protocol}://${req.get('host')}${attachment.fileUrl}`;
+    const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+    const absoluteUrl = `${baseUrl}${attachment.fileUrl}`;
 
     return res.status(200).json({
       success: true,
@@ -267,7 +280,8 @@ export const updateAttachment = async (req, res) => {
       await attachment.save();
     }
 
-    const absoluteUrl = `${req.protocol}://${req.get('host')}${attachment.fileUrl}`;
+    const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+    const absoluteUrl = `${baseUrl}${attachment.fileUrl}`;
 
     return res.status(200).json({
       success: true,

@@ -175,6 +175,11 @@ class EmailTemplateService {
       }
 
       if (sub && sub.user_id && sub.user_id.email) {
+        if (sub.activation_email_sent) {
+          console.log(`[EmailService] Activation email already sent for sub: ${sub._id}. Skipping.`);
+          return true;
+        }
+
         const start = new Date(sub.current_period_start);
         const end = new Date(sub.current_period_end);
         const diffDays = Math.ceil(Math.abs(end - start) / (1000 * 60 * 60 * 24));
@@ -203,12 +208,21 @@ class EmailTemplateService {
         }
 
         console.log(`[EmailService] Sending 'plan-activation' email to: ${sub.user_id.email}`);
-        return await this.send('plan-activation', sub.user_id.email, {
+        const sent = await this.send('plan-activation', sub.user_id.email, {
           user_name: sub.user_id.name,
           plan_name: sub.plan_id?.name || 'Your Plan',
           amount_paid: `${sub.amount_paid} ${sub.currency}`,
           validity_days: diffDays
         }, attachments);
+
+        if (sent) {
+          await subscription.constructor.updateOne(
+            { _id: sub._id },
+            { $set: { activation_email_sent: true } }
+          );
+          subscription.activation_email_sent = true;
+        }
+        return sent;
       } else {
         console.error(`[EmailService] Cannot send email. Missing user email or populated data for sub: ${sub?._id}`);
       }

@@ -2,13 +2,41 @@ import Template from "../models/template.model.js";
 import mongoose from "mongoose";
 import { getWhatsAppTypeFromMime } from "../utils/uploadMediaToWhatsapp.js";
 
+const cleanAppUrl = (process.env.APP_URL || '').replace(/\/$/, '');
+
+const normalizeMediaUrl = (url) => {
+  if (!url || typeof url !== 'string') return url;
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    if (url.includes('/uploads/') && (url.includes('/opt/') || url.includes('/home/') || url.includes('//'))) {
+      try {
+        const urlObj = new URL(url);
+        const uploadIndex = urlObj.pathname.indexOf('/uploads/');
+        if (uploadIndex !== -1) {
+          const cleanUploadPath = urlObj.pathname.substring(uploadIndex);
+          return `${urlObj.protocol}//${urlObj.host}${cleanUploadPath}${urlObj.search}`;
+        }
+      } catch (e) {}
+    }
+    return url;
+  }
+  let cleanPath = url.replace(/\\/g, '/');
+  if (cleanPath.includes('/uploads/')) {
+    cleanPath = cleanPath.substring(cleanPath.indexOf('/uploads/'));
+  } else if (cleanPath.includes('uploads/')) {
+    cleanPath = '/' + cleanPath.substring(cleanPath.indexOf('uploads/'));
+  } else if (!cleanPath.startsWith('/')) {
+    cleanPath = '/' + cleanPath;
+  }
+  return cleanAppUrl ? `${cleanAppUrl}${cleanPath}` : cleanPath;
+};
+
 const addBaseUrlToMediaUrls = (template) => {
   if (!template) return template;
 
   const result = { ...template };
 
-  if (result.header && result.header.media_url && !result.header.media_url.startsWith('http')) {
-    result.header.media_url = `${process.env.APP_URL}/${result.header.media_url}`;
+  if (result.header && result.header.media_url) {
+    result.header.media_url = normalizeMediaUrl(result.header.media_url);
   }
 
   if (result.carousel_cards && Array.isArray(result.carousel_cards)) {
@@ -17,10 +45,10 @@ const addBaseUrlToMediaUrls = (template) => {
         card = {
           ...card,
           components: card.components.map(component => {
-            if (component.media_url && !component.media_url.startsWith('http')) {
+            if (component.media_url) {
               component = {
                 ...component,
-                media_url: `${process.env.APP_URL}/${component.media_url}`
+                media_url: normalizeMediaUrl(component.media_url)
               };
             }
             return component;

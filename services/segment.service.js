@@ -41,7 +41,10 @@ export const createSegment = async (data, userId) => {
 export const addContactsToSegment = async (segmentId, contactIds, userId) => {
   const validContacts = await Contact.find({
     _id: { $in: contactIds },
-    user_id: userId,
+    $or: [
+      { user_id: userId },
+      { created_by: userId }
+    ],
     deleted_at: null
   }).select('_id');
 
@@ -62,7 +65,10 @@ export const addContactsToSegment = async (segmentId, contactIds, userId) => {
 export const bulkAddContactsToSegments = async (contactIds, segmentIds, userId) => {
   const validContacts = await Contact.find({
     _id: { $in: contactIds },
-    user_id: userId,
+    $or: [
+      { user_id: userId },
+      { created_by: userId }
+    ],
     deleted_at: null
   }).select('_id');
   const validContactIds = validContacts.map(c => c._id);
@@ -89,7 +95,11 @@ export const bulkAddContactsToSegments = async (contactIds, segmentIds, userId) 
 };
 
 export const updateContactSegments = async (contactId, segmentIds, userId) => {
-  const contact = await Contact.findOne({ _id: contactId, user_id: userId, deleted_at: null });
+  const contact = await Contact.findOne({
+    _id: contactId,
+    $or: [{ user_id: userId }, { created_by: userId }],
+    deleted_at: null
+  });
   if (!contact) return;
 
   const oldSegmentIds = contact.segments || [];
@@ -122,7 +132,10 @@ export const removeContactsFromSegment = async (segmentId, contactIds, userId) =
   if (!Array.isArray(contactIds) || contactIds.length === 0) return 0;
 
   const result = await Contact.updateMany(
-    { _id: { $in: contactIds }, user_id: userId },
+    {
+      _id: { $in: contactIds },
+      $or: [{ user_id: userId }, { created_by: userId }]
+    },
     { $pull: { segments: segmentId } }
   );
 
@@ -138,7 +151,7 @@ export const getSegmentContacts = async (segmentId, userId, options = {}) => {
 
   const query = {
     segments: segmentId,
-    user_id: userId,
+    $or: [{ user_id: userId }, { created_by: userId }],
     deleted_at: null,
     ...searchQuery
   };
@@ -163,8 +176,11 @@ export const getSegmentContacts = async (segmentId, userId, options = {}) => {
 };
 
 export const getContactSegments = async (contactId, userId) => {
-  const contact = await Contact.findOne({ _id: contactId, user_id: userId, deleted_at: null })
-    .populate('segments');
+  const contact = await Contact.findOne({
+    _id: contactId,
+    $or: [{ user_id: userId }, { created_by: userId }],
+    deleted_at: null
+  }).populate('segments');
 
   if (!contact) return [];
   return contact.segments.filter(s => s.deleted_at === null);
@@ -188,11 +204,17 @@ export const removeContactFromAllSegments = async (contactIds, userId) => {
   const ids = Array.isArray(contactIds) ? contactIds : [contactIds];
   if (ids.length === 0) return;
 
-  const contacts = await Contact.find({ _id: { $in: ids }, user_id: userId }).select('segments');
+  const contacts = await Contact.find({
+    _id: { $in: ids },
+    $or: [{ user_id: userId }, { created_by: userId }]
+  }).select('segments');
   const affectedSegmentIds = [...new Set(contacts.flatMap(c => (c.segments || []).map(id => id.toString())))];
 
   await Contact.updateMany(
-    { _id: { $in: ids }, user_id: userId },
+    {
+      _id: { $in: ids },
+      $or: [{ user_id: userId }, { created_by: userId }]
+    },
     { $set: { segments: [] } }
   );
 
@@ -206,14 +228,18 @@ export const getContactsForSegments = async (segmentIds, userId, workspaceId) =>
 
   const query = {
     segments: { $in: segmentIds },
-    user_id: userId,
+    $or: [{ user_id: userId }, { created_by: userId }],
     deleted_at: null
   };
   if (workspaceId) {
-    query.$or = [
-      { workspace_id: workspaceId },
-      { workspace_id: null },
-      { workspace_id: { $exists: false } }
+    query.$and = [
+      {
+        $or: [
+          { workspace_id: workspaceId },
+          { workspace_id: null },
+          { workspace_id: { $exists: false } }
+        ]
+      }
     ];
   }
 
@@ -222,7 +248,7 @@ export const getContactsForSegments = async (segmentIds, userId, workspaceId) =>
 
 export const getSegmentById = async (segmentId, userId) => {
   return await Segment.findOne({ _id: segmentId, user_id: userId });
-}
+};
 
 export const updateSegment = async (segmentId, segmentData, userId) => {
   const segment = await Segment.findOne({ _id: segmentId, user_id: userId });
@@ -247,7 +273,10 @@ export const updateSegment = async (segmentId, segmentData, userId) => {
 
   if (segmentData.hasOwnProperty('contactIds')) {
     await Contact.updateMany(
-      { segments: segmentId, user_id: userId },
+      {
+        segments: segmentId,
+        $or: [{ user_id: userId }, { created_by: userId }]
+      },
       { $pull: { segments: segmentId } }
     );
 
@@ -265,7 +294,7 @@ export const updateSegment = async (segmentId, segmentData, userId) => {
   }
 
   return await segment.save();
-}
+};
 
 export const bulkDeleteSegments = async (segmentIds, userId) => {
   if (!Array.isArray(segmentIds) || segmentIds.length === 0) return 0;
@@ -279,7 +308,10 @@ export const bulkDeleteSegments = async (segmentIds, userId) => {
 
   if (result.modifiedCount > 0) {
     await Contact.updateMany(
-      { user_id: userId, segments: { $in: objectIds } },
+      {
+        $or: [{ user_id: userId }, { created_by: userId }],
+        segments: { $in: objectIds }
+      },
       { $pull: { segments: { $in: objectIds } } }
     );
   }

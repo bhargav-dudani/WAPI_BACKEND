@@ -60,6 +60,16 @@ const whatsappWabaSchema = new mongoose.Schema({
     default: true
   },
 
+  account_review_status: {
+    type: String,
+    default: null
+  },
+
+  business_verification_status: {
+    type: String,
+    default: null
+  },
+
   workspace_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Workspace',

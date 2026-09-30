@@ -11,7 +11,7 @@ import { getWhatsAppTypeFromMime } from '../utils/uploadMediaToWhatsapp.js';
 import AIModel from '../models/ai-model.model.js';
 import UserSetting from '../models/user-setting.model.js';
 
-const API_VERSION = 'v23.0';
+const API_VERSION = process.env.WHATSAPP_API_VERSION || 'v23.0';
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 10;
@@ -412,7 +412,9 @@ export const createCampaign = async (req, res) => {
       return res.status(400).json({ error: 'No contacts found for the specified criteria' });
     }
 
-    const recipients = contacts.map(contact => {
+    const batchSize = batch_size ? parseInt(batch_size, 10) : 0;
+    const pauseMinutes = pause_between_batches ? parseInt(pause_between_batches, 10) : 0;
+    const recipients = contacts.map((contact, index) => {
       let identifier = contact.phone_number;
       if (platform === 'telegram') {
         identifier = contact.telegram_chat_id || contact.phone_number;
@@ -421,12 +423,40 @@ export const createCampaign = async (req, res) => {
       } else if (platform === 'instagram') {
         identifier = contact.instagram_scoped_id || contact.phone_number;
       }
+      const batchNumber = batchSize > 0 ? Math.ceil((index + 1) / batchSize) : 1;
       return {
         contact_id: contact._id,
         phone_number: identifier,
-        status: 'pending'
+        status: 'pending',
+        batch_number: batchNumber
       };
     });
+
+    let batchStats = undefined;
+    if (batchSize > 0 && pauseMinutes > 0) {
+      const totalBatches = Math.ceil(contacts.length / batchSize);
+      const batchHistory = [];
+      const baseTime = parsedScheduledAt || new Date();
+      for (let i = 1; i <= totalBatches; i++) {
+        const startedAt = new Date(baseTime.getTime() + (i - 1) * pauseMinutes * 60 * 1000);
+        const messagesCount = (i === totalBatches) ? (contacts.length % batchSize || batchSize) : batchSize;
+        batchHistory.push({
+          batch_number: i,
+          messages_count: messagesCount,
+          started_at: startedAt,
+          completed_at: null,
+          status: i === 1 ? 'running' : 'pending'
+        });
+      }
+      batchStats = {
+        total_batches: totalBatches,
+        current_batch: 1,
+        completed_batches: 0,
+        pending_batches: totalBatches - 1,
+        next_batch_starts_at: totalBatches > 1 ? batchHistory[1].started_at : null,
+        batch_history: batchHistory
+      };
+    }
 
     const baseUrl = process.env.APP_URL || (req ? `${req.protocol}://${req.get('host')}` : '');
     const uploadedFileUrl = req.file || (req.files && req.files['file_url'] ? req.files['file_url'][0] : null);
@@ -435,9 +465,19 @@ export const createCampaign = async (req, res) => {
     let finalMediaUrl = media_url;
     let originalFilename = null;
     if (uploadedFileUrl) {
-      finalMediaUrl = uploadedFileUrl.path.startsWith('http') || uploadedFileUrl.path.startsWith('/') ? uploadedFileUrl.path : `/${uploadedFileUrl.path}`;
-      if (!finalMediaUrl.startsWith('http')) {
-        finalMediaUrl = `${baseUrl}${finalMediaUrl}`;
+      let rawPath = uploadedFileUrl.path.replace(/\\/g, '/');
+      if (!rawPath.startsWith('http')) {
+        if (rawPath.includes('/uploads/')) {
+          rawPath = rawPath.substring(rawPath.indexOf('/uploads/'));
+        } else if (rawPath.includes('uploads/')) {
+          rawPath = '/' + rawPath.substring(rawPath.indexOf('uploads/'));
+        } else if (!rawPath.startsWith('/')) {
+          rawPath = '/' + rawPath;
+        }
+        const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+        finalMediaUrl = `${cleanBaseUrl}${rawPath}`;
+      } else {
+        finalMediaUrl = rawPath;
       }
       originalFilename = uploadedFileUrl.originalname;
     } else if (media_url) {
@@ -459,9 +499,18 @@ export const createCampaign = async (req, res) => {
       resolvedCarouselCardsData = await Promise.all(parsed.map(async (card, index) => {
         const file = carouselUploadedFiles[index];
         if (file) {
-          let fullLink = file.path.startsWith('http') || file.path.startsWith('/') ? file.path : `/${file.path}`;
-          if (!fullLink.startsWith('http')) {
-            fullLink = `${baseUrl}${fullLink}`;
+          let rawPath = file.path.replace(/\\/g, '/');
+          let fullLink = rawPath;
+          if (!rawPath.startsWith('http')) {
+            if (rawPath.includes('/uploads/')) {
+              rawPath = rawPath.substring(rawPath.indexOf('/uploads/'));
+            } else if (rawPath.includes('uploads/')) {
+              rawPath = '/' + rawPath.substring(rawPath.indexOf('uploads/'));
+            } else if (!rawPath.startsWith('/')) {
+              rawPath = '/' + rawPath;
+            }
+            const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+            fullLink = `${cleanBaseUrl}${rawPath}`;
           }
           return {
             ...card,
@@ -510,7 +559,9 @@ export const createCampaign = async (req, res) => {
       avoid_unsubscribers: avoidUnsub,
       batch_size: batch_size ? parseInt(batch_size, 10) : null,
       pause_between_batches: pause_between_batches ? parseInt(pause_between_batches, 10) : null,
-      status: isPublishedBool ? (isRecurringBool ? 'recurring' : (isScheduledBool ? 'scheduled' : 'draft')) : 'draft',
+      status: isPublishedBool ? (isRecurringBool ? 'recurring' : (isScheduledBool ? 'scheduled' : 'sending')) : 'draft',
+      sent_at: (isPublishedBool && !isScheduledBool) ? new Date() : undefined,
+      batch_stats: batchStats,
       stats: {
         total_recipients: contacts.length,
         pending_count: contacts.length
@@ -616,7 +667,7 @@ export const getAllCampaigns = async (req, res) => {
       Campaign.countDocuments(matchFilter),
       Campaign.find(matchFilter)
         .select(
-          'name description recipient_type is_published is_scheduled is_recurring scheduled_at sent_at stats status completion_duration_seconds template_id created_at platform'
+          'name description recipient_type is_published is_paused is_scheduled is_recurring scheduled_at sent_at stats status completion_duration_seconds template_id created_at platform'
         )
         .populate({
           path: 'template_id',
@@ -689,6 +740,7 @@ export const getAllCampaigns = async (req, res) => {
         template_name: c.template_id?.template_name || null,
         recipient_type: c.recipient_type,
         is_published: c.is_published,
+        is_paused: c.is_paused ?? false,
         is_scheduled: c.is_scheduled,
         is_recurring: c.is_recurring,
         scheduled_at: c.scheduled_at,
@@ -736,9 +788,12 @@ export const getCampaignById = async (req, res) => {
     const userId = req.user.owner_id;
     const workspaceId = sanitizeWorkspaceId(req.query.workspace_id || req.headers['x-workspace-id']);
 
+    const allRecipients = req.query.all_recipients === 'true';
     const page = Math.max(1, parseInt(req.query.recipient_page || req.query.page) || 1);
-    const limit = Math.max(1, Math.min(100, parseInt(req.query.recipient_limit || req.query.limit) || 20));
-    const skip = (page - 1) * limit;
+    const limit = allRecipients
+      ? 1000000
+      : Math.max(1, Math.min(1000000, parseInt(req.query.recipient_limit || req.query.limit) || 20));
+    const skip = allRecipients ? 0 : (page - 1) * limit;
 
     const query = {
       _id: id,
@@ -767,11 +822,19 @@ export const getCampaignById = async (req, res) => {
 
     let recipients = [];
     if (!excludeRecipients) {
-      const recipientsDoc = await Campaign.findOne(
-        { _id: id },
-        { recipients: { $slice: [skip, limit] } }
-      ).lean();
-      recipients = recipientsDoc?.recipients || [];
+      if (allRecipients) {
+        const recipientsDoc = await Campaign.findOne(
+          { _id: id },
+          { recipients: 1 }
+        ).lean();
+        recipients = recipientsDoc?.recipients || [];
+      } else {
+        const recipientsDoc = await Campaign.findOne(
+          { _id: id },
+          { recipients: { $slice: [skip, limit] } }
+        ).lean();
+        recipients = recipientsDoc?.recipients || [];
+      }
     }
 
     let processedRecipients = recipients;
@@ -901,7 +964,9 @@ ${JSON.stringify(errorList, null, 2)}`;
           }
         }
 
-        processedRecipients = allRunsWithRecipients.slice(skip, skip + limit);
+        processedRecipients = allRecipients
+          ? allRunsWithRecipients
+          : allRunsWithRecipients.slice(skip, skip + limit);
 
         campaign._recurring_total_messages = totalRunMessages;
       }
@@ -911,13 +976,13 @@ ${JSON.stringify(errorList, null, 2)}`;
       success: true,
       data: {
         ...campaign,
-        error_log: campaign.error_log || [],
-        recipients,
+        error_log: processedErrorLog,
+        recipients: processedRecipients,
         recipients_pagination: excludeRecipients ? null : {
-          currentPage: page,
-          totalPages: Math.ceil((campaign._recurring_total_messages || campaign.stats?.total_recipients || 0) / limit),
+          currentPage: allRecipients ? 1 : page,
+          totalPages: allRecipients ? 1 : Math.ceil((campaign._recurring_total_messages || campaign.stats?.total_recipients || 0) / limit),
           totalItems: campaign._recurring_total_messages || campaign.stats?.total_recipients || 0,
-          itemsPerPage: limit
+          itemsPerPage: allRecipients ? (campaign._recurring_total_messages || campaign.stats?.total_recipients || 0) : limit
         }
       }
     });
@@ -1288,7 +1353,8 @@ export const publishCampaign = async (req, res) => {
         updateData.next_run_at = updateData.scheduled_at || campaign.scheduled_at;
       }
     } else {
-      updateData.status = 'draft';
+      updateData.status = 'sending';
+      updateData.sent_at = new Date();
       startSending = true;
     }
 
@@ -1329,7 +1395,12 @@ export const resendCampaign = async (req, res) => {
     const { id } = req.params;
     const userId = req.user.owner_id;
     const workspaceId = sanitizeWorkspaceId(req.query.workspace_id || req.headers['x-workspace-id']);
-    const { is_scheduled, scheduled_at } = req.body;
+    const { is_scheduled, scheduled_at, failed_only } = req.body;
+    const isFailedOnlyBool =
+      failed_only === true ||
+      failed_only === 'true' ||
+      failed_only === 1 ||
+      failed_only === '1';
 
     const query = {
       _id: id,
@@ -1352,6 +1423,17 @@ export const resendCampaign = async (req, res) => {
         success: false,
         error: 'Campaign is currently sending and cannot be resent.'
       });
+    }
+
+    let sourceRecipients = originalCampaign.recipients || [];
+    if (isFailedOnlyBool) {
+      sourceRecipients = sourceRecipients.filter(r => r.status === 'failed');
+      if (sourceRecipients.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'No failed contacts found in this campaign to retry.'
+        });
+      }
     }
 
     const isScheduledBool =
@@ -1394,19 +1476,53 @@ export const resendCampaign = async (req, res) => {
       : originalCampaign;
 
     const rootName = rootCampaign ? rootCampaign.name : originalCampaign.name;
-    const newName = `${rootName} - Resend #${resendCount + 1}`;
+    const newName = isFailedOnlyBool
+      ? `${rootName} - Retry Failed #${resendCount + 1}`
+      : `${rootName} - Resend #${resendCount + 1}`;
 
-    const resetRecipients = originalCampaign.recipients.map(r => ({
-      contact_id: r.contact_id,
-      phone_number: r.phone_number,
-      status: 'pending',
-      sent_at: null,
-      delivered_at: null,
-      read_at: null,
-      failed_at: null,
-      failure_reason: null,
-      message_id: null
-    }));
+    const batchSize = originalCampaign.batch_size || 0;
+    const pauseMinutes = originalCampaign.pause_between_batches || 0;
+    const resetRecipients = sourceRecipients.map((r, index) => {
+      const batchNumber = batchSize > 0 ? Math.ceil((index + 1) / batchSize) : 1;
+      return {
+        contact_id: r.contact_id,
+        phone_number: r.phone_number,
+        status: 'pending',
+        sent_at: null,
+        delivered_at: null,
+        read_at: null,
+        failed_at: null,
+        failure_reason: null,
+        message_id: null,
+        batch_number: batchNumber
+      };
+    });
+
+    let batchStats = undefined;
+    if (batchSize > 0 && pauseMinutes > 0) {
+      const totalBatches = Math.ceil(resetRecipients.length / batchSize);
+      const batchHistory = [];
+      const baseTime = parsedScheduledAt || new Date();
+      for (let i = 1; i <= totalBatches; i++) {
+        const startedAt = new Date(baseTime.getTime() + (i - 1) * pauseMinutes * 60 * 1000);
+        const messagesCount = (i === totalBatches) ? (resetRecipients.length % batchSize || batchSize) : batchSize;
+        batchHistory.push({
+          batch_number: i,
+          messages_count: messagesCount,
+          started_at: startedAt,
+          completed_at: null,
+          status: i === 1 ? 'running' : 'pending'
+        });
+      }
+      batchStats = {
+        total_batches: totalBatches,
+        current_batch: 1,
+        completed_batches: 0,
+        pending_batches: totalBatches - 1,
+        next_batch_starts_at: totalBatches > 1 ? batchHistory[1].started_at : null,
+        batch_history: batchHistory
+      };
+    }
 
     const newCampaignData = {
       name: newName,
@@ -1435,15 +1551,18 @@ export const resendCampaign = async (req, res) => {
       is_published: true,
       is_scheduled: isScheduledBool,
       scheduled_at: parsedScheduledAt,
-      status: isScheduledBool ? 'scheduled' : 'draft',
+      status: isScheduledBool ? 'scheduled' : 'sending',
+      sent_at: isScheduledBool ? null : new Date(),
 
       is_resend: true,
+      is_failed_retry: isFailedOnlyBool,
       original_campaign_id: rootCampaignId,
 
       stats: {
         total_recipients: resetRecipients.length,
         pending_count: resetRecipients.length
       },
+      batch_stats: batchStats,
       recipients: resetRecipients
     };
 
@@ -1506,6 +1625,16 @@ export const sendCampaign = async (req, res) => {
       });
     }
 
+    await Campaign.updateOne(
+      { _id: campaign._id },
+      {
+        $set: {
+          status: 'sending',
+          sent_at: new Date()
+        }
+      }
+    );
+
     setTimeout(async () => {
       await processCampaignInBackground(campaign._id);
     }, 0);
@@ -1567,10 +1696,12 @@ export const togglePauseCampaign = async (req, res) => {
     }
 
     if (campaign.is_paused) {
-      setImmediate(async () => {
-        await processCampaignInBackground(campaign._id);
-      });
       campaign.is_paused = false;
+      await campaign.save();
+
+      setImmediate(async () => {
+        await processCampaignInBackground(campaign._id, { isResuming: true });
+      });
 
       return res.status(200).json({
         success: true,
@@ -1585,7 +1716,7 @@ export const togglePauseCampaign = async (req, res) => {
         const { getCampaignQueue } = await import('../queues/campaign-queue.js');
         const campaignQueue = getCampaignQueue();
         if (campaignQueue && typeof campaignQueue.getJobs === 'function') {
-          const jobs = await campaignQueue.getJobs(['waiting', 'delayed']);
+          const jobs = await campaignQueue.getJobs(['waiting', 'delayed', 'prioritized', 'paused'], 0, -1);
           let removedCount = 0;
           for (const job of jobs) {
             if (job.data?.campaignId === id) {
@@ -1821,7 +1952,7 @@ export const getCampaignInsights = async (req, res) => {
         const wabaAccountId = waba?.whatsapp_business_account_id;
         const token = waba?.access_token || waba?.system_user_access_token || process.env.META_ACCESS_TOKEN;
         if (wabaAccountId && token) {
-          const rateCardRes = await axios.get(`https://graph.facebook.com/${process.env.API_VERSION || 'v19.0'}/${wabaAccountId}/rate_card?currency=USD`, {
+          const rateCardRes = await axios.get(`https://graph.facebook.com/${process.env.WHATSAPP_API_VERSION || process.env.API_VERSION || 'v19.0'}/${wabaAccountId}/rate_card?currency=USD`, {
             headers: { Authorization: `Bearer ${token}` }
           });
           if (rateCardRes.data?.data?.[0]?.rates) {
@@ -2050,6 +2181,55 @@ export const getCampaignInsights = async (req, res) => {
   }
 };
 
+/**
+ * Admin-only: Force-reset campaigns stuck in 'sending' state back to 'failed'.
+ * Bypasses the normal status guard. Requires super_admin role.
+ */
+export const adminResetCampaign = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const campaign = await Campaign.findById(id);
+    if (!campaign) {
+      return res.status(404).json({ success: false, error: 'Campaign not found' });
+    }
+
+    const allowedStatuses = ['sending', 'pending', 'queued', 'scheduled'];
+    if (!allowedStatuses.includes(campaign.status)) {
+      return res.status(400).json({
+        success: false,
+        error: `Campaign status is '${campaign.status}' — only ${allowedStatuses.join('/')} campaigns can be reset`
+      });
+    }
+
+    const previousStatus = campaign.status;
+    campaign.status = 'failed';
+    campaign.jobs_queued = false;
+    campaign.completed_at = new Date();
+    await campaign.save();
+
+    console.log(`[AdminReset] Campaign ${id} ("${campaign.name}") reset from '${previousStatus}' to 'failed' by admin ${req.user?.email}`);
+
+    return res.status(200).json({
+      success: true,
+      message: `Campaign "${campaign.name}" has been reset to failed status`,
+      campaign: {
+        id: campaign._id,
+        name: campaign.name,
+        status: campaign.status,
+        jobs_queued: campaign.jobs_queued
+      }
+    });
+  } catch (error) {
+    console.error('Error resetting campaign:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to reset campaign',
+      details: error.message
+    });
+  }
+};
+
 export default {
   createCampaign,
   getAllCampaigns,
@@ -2061,5 +2241,6 @@ export default {
   resendCampaign,
   togglePauseCampaign,
   setupRecurringCampaign,
-  getCampaignInsights
+  getCampaignInsights,
+  adminResetCampaign
 };

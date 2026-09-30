@@ -19,21 +19,21 @@ async function seedAIModels() {
         created_by: adminId
       },
       {
-        name: 'google-gemini-1.5-pro',
-        display_name: 'Google Gemini 1.5 Pro',
+        name: 'google-gemini-1.5-flash',
+        display_name: 'Google Gemini 1.5 Flash',
         provider: 'google',
-        model_id: 'gemini-2.5-flash-lite',
+        model_id: 'gemini-1.5-flash',
         api_endpoint: 'https://generativelanguage.googleapis.com/v1',
         request_format: 'google',
         status: 'active',
-        description: 'Google highly capable multimodal model.',
+        description: 'Google fast and efficient multimodal model.',
         created_by: adminId
       },
       {
         name: 'xai-grok-beta',
-        display_name: 'xAI Grok Beta',
+        display_name: 'xAI Grok 2',
         provider: 'xai',
-        model_id: 'grok-beta',
+        model_id: 'grok-2-latest',
         api_endpoint: 'https://api.x.ai/v1/chat/completions',
         request_format: 'openai',
         status: 'active',

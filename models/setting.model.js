@@ -243,7 +243,31 @@ const settingSchema = new mongoose.Schema({
   twitter_client_id: { type: String, default: null },
   twitter_client_secret: { type: String, default: null },
   twitter_redirect_uri: { type: String, default: null },
-  
+  // OAuth 1.0a credentials (required for media/image uploads via v1.1 API)
+  twitter_consumer_key: { type: String, default: null },
+  twitter_consumer_secret: { type: String, default: null },
+  twitter_oauth_token: { type: String, default: null },
+  twitter_oauth_token_secret: { type: String, default: null },
+
+
+  youtube_client_id: { type: String, default: null },
+  youtube_client_secret: { type: String, default: null },
+
+  linkedin_client_id: { type: String, default: null },
+  linkedin_client_secret: { type: String, default: null },
+
+  threads_app_id: { type: String, default: null },
+  threads_app_secret: { type: String, default: null },
+
+
+  tiktok_client_key: { type: String, default: null },
+  tiktok_client_secret: { type: String, default: null },
+  social_publishing_platforms: {
+    type: [String],
+    enum: ['youtube', 'linkedin', 'twitter', 'threads', 'tiktok'],
+    default: ['youtube', 'linkedin']
+  },
+
   max_groups_per_user: {
     type: Number,
     default: 500
@@ -285,6 +309,11 @@ const settingSchema = new mongoose.Schema({
     min: 1,
     max: 365,
     default: 7
+  },
+  free_trial_plan_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Plan',
+    default: null
   },
   trial_expired_delete_days: {
     type: Number,
@@ -396,6 +425,24 @@ const settingSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  midtrans_merchant_id: {
+    type: String,
+    default: null
+  },
+  midtrans_client_key: {
+    type: String,
+    default: null
+  },
+  midtrans_server_key: {
+    type: String,
+    default: null
+  },
+  midtrans_mode: { type: String, enum: ['sandbox', 'live'], default: 'sandbox' },
+  is_midtrans_active: { type: Boolean, default: false },
+
+  mollie_api_key: { type: String, default: null },
+  mollie_mode: { type: String, enum: ['sandbox', 'live'], default: 'sandbox' },
+  is_mollie_active: { type: Boolean, default: false },
   google_client_id: {
     type: String,
     default: null
@@ -547,6 +594,14 @@ const settingSchema = new mongoose.Schema({
   popup_button_url: {
     type: String,
     default: ''
+  },
+  theme_primary_color: {
+    type: String,
+    default: '#059669'
+  },
+  theme_light_background_color: {
+    type: String,
+    default: '#f1f5f9'
   }
 }, {
   timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },

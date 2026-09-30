@@ -168,14 +168,21 @@ export const updateCampaignStatsFromMessage = async (messageId, newStatus, times
     const deliveredCount = updatedCampaign.stats.delivered_count || 0;
     const readCount = updatedCampaign.stats.read_count || 0;
     const failedCount = updatedCampaign.stats.failed_count || 0;
+    const pendingCount = updatedCampaign.stats.pending_count || 0;
 
     let newCampaignStatus = updatedCampaign.status;
-    if (failedCount > 0) {
-      newCampaignStatus = 'completed_with_errors';
-    } else if (readCount === totalRecipients && totalRecipients > 0) {
-      newCampaignStatus = 'completed';
-    } else if (deliveredCount + readCount === totalRecipients && totalRecipients > 0) {
-      newCampaignStatus = 'delivered';
+    if (pendingCount === 0 && totalRecipients > 0) {
+      if (failedCount === totalRecipients) {
+        newCampaignStatus = 'failed';
+      } else if (failedCount > 0) {
+        newCampaignStatus = 'completed_with_errors';
+      } else if (readCount === totalRecipients) {
+        newCampaignStatus = 'completed';
+      } else if (deliveredCount + readCount === totalRecipients) {
+        newCampaignStatus = 'delivered';
+      } else {
+        newCampaignStatus = 'completed';
+      }
     }
 
     const finalUpdate = {};
@@ -185,8 +192,12 @@ export const updateCampaignStatsFromMessage = async (messageId, newStatus, times
 
     const totalProcessed = sentCount + failedCount;
     if (totalProcessed >= totalRecipients && updatedCampaign.status === 'sending') {
-      const hasFailures = failedCount > 0;
-      const finalStatus = hasFailures ? 'completed_with_errors' : 'completed';
+      let finalStatus = 'completed';
+      if (totalRecipients > 0 && failedCount === totalRecipients) {
+        finalStatus = 'failed';
+      } else if (failedCount > 0) {
+        finalStatus = 'completed_with_errors';
+      }
       finalUpdate.status = finalStatus;
       finalUpdate.completed_at = new Date();
 

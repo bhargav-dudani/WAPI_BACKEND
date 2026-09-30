@@ -7,7 +7,7 @@ import crypto from 'crypto';
 import { FacebookConnection, FacebookPage, FacebookAdAccount, AutomationFlow, FacebookAdSet, FacebookAd } from '../models/index.js';
 import FacebookAdCampaign from '../models/facebook-ad-campaign.model.js';
 
-const FB_API_VERSION = 'v20.0';
+const FB_API_VERSION = process.env.WHATSAPP_API_VERSION || 'v20.0';
 const BASE = `https://graph.facebook.com/${FB_API_VERSION}`;
 
 

@@ -6,6 +6,7 @@ import { Setting, Currency, WhatsappWaba, Role, User, WhatsappPhoneNumber, Templ
 import { updateEnvFile } from '../utils/env-file.js';
 import mongoose from 'mongoose';
 import { PayPalService } from '../utils/payment-gateway.service.js';
+import { deleteOrphanFiles } from '../utils/aws-storage.js';
 
 const STRIPE_WEBHOOK_EVENTS = [
   'customer.subscription.created',
@@ -18,7 +19,10 @@ const STRIPE_WEBHOOK_EVENTS = [
 ];
 
 const getAllSettings = async (req, res) => {
-  const settings = await Setting.findOne().populate('default_currency').populate('signup_agree_page');
+  const settings = await Setting.findOne()
+    .populate('default_currency')
+    .populate('signup_agree_page')
+    .populate('free_trial_plan_id');
   if (!settings) {
     return res.status(200).json({});
   }
@@ -79,7 +83,6 @@ const getAllSettings = async (req, res) => {
   out.mail_from_email = process.env.MAIL_FROM_EMAIL || '';
   out.support_email = process.env.SUPPORT_EMAIL || '';
   out.maintenance_mode = process.env.MAINTENANCE_MODE === 'true';
-  out.google_redirect_uri = process.env.GOOGLE_REDIRECT_URI || '';
 
   out.google_redirect_uri = `${baseUrl.replace(/\/$/, '')}/api/google/callback`;
 
@@ -185,6 +188,9 @@ const getAllSettings = async (req, res) => {
   out.popup_bullets = settings.popup_bullets !== undefined ? settings.popup_bullets : [];
   out.popup_button_text = settings.popup_button_text !== undefined ? settings.popup_button_text : '';
   out.popup_button_url = settings.popup_button_url !== undefined ? settings.popup_button_url : '';
+
+  out.theme_primary_color = settings.theme_primary_color !== undefined ? settings.theme_primary_color : '#059669';
+  out.theme_light_background_color = settings.theme_light_background_color !== undefined ? settings.theme_light_background_color : '#f1f5f9';
 
   res.status(200).json(out);
 };
@@ -490,10 +496,14 @@ const updateSetting = async (req, res) => {
     }
 
     if (setting) {
+      const oldSettingObj = setting.toObject();
       const updatedSetting = await Setting.findByIdAndUpdate(setting._id, processedBody, {
         returnDocument: 'after',
         runValidators: true,
       }).populate('signup_agree_page');
+      if (updatedSetting) {
+        await deleteOrphanFiles(oldSettingObj, updatedSetting.toObject());
+      }
       setting = updatedSetting;
     } else {
       const createdSetting = await Setting.create(processedBody);
@@ -734,7 +744,7 @@ const updateStripeSettings = async (req, res) => {
 
 const getStripeSettings = async (req, res) => {
   try {
-    const setting = await Setting.findOne().select('stripe_publishable_key stripe_secret_key stripe_webhook_secret').lean();
+    const setting = await Setting.findOne().select('stripe_publishable_key stripe_secret_key stripe_webhook_secret is_stripe_active').lean();
     if (!setting) {
       return res.status(200).json({ data: null });
     }
@@ -910,7 +920,7 @@ const updateRazorpaySettings = async (req, res) => {
 
 const getRazorpaySettings = async (req, res) => {
   try {
-    const setting = await Setting.findOne().select('razorpay_key_id razorpay_key_secret razorpay_webhook_secret').lean();
+    const setting = await Setting.findOne().select('razorpay_key_id razorpay_key_secret razorpay_webhook_secret is_razorpay_active').lean();
     if (!setting) {
       return res.status(200).json({ data: null });
     }
@@ -1034,98 +1044,133 @@ const updatePayPalSettings = async (req, res) => {
   }
 };
 
-const getGoogleSettings = async (req, res) => {
+const getMidtransSettings = async (req, res) => {
   try {
-    const setting = await Setting.findOne().select('google_client_id google_client_secret google_redirect_uri').lean();
+    const setting = await Setting.findOne().select('midtrans_merchant_id midtrans_client_key midtrans_server_key midtrans_mode is_midtrans_active').lean();
     if (!setting) {
       return res.status(200).json({ data: null });
     }
+    const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+    const webhookUrl = `${baseUrl.replace(/\/$/, '')}/api/webhook/midtrans`;
 
-    let maskedClientId = null;
-    if (setting.google_client_id && setting.google_client_id.length > 8) {
-      maskedClientId = setting.google_client_id.substring(0, 8) + '****';
+    let maskedServerKey = null;
+    if (setting.midtrans_server_key && setting.midtrans_server_key.length > 8) {
+      maskedServerKey = setting.midtrans_server_key.substring(0, 8) + '****';
     }
 
     return res.status(200).json({
       data: {
-        google_client_id: maskedClientId,
-        google_client_secret_set: !!setting.google_client_secret,
-        google_redirect_uri: setting.google_redirect_uri || null
+        midtrans_merchant_id: setting.midtrans_merchant_id,
+        midtrans_client_key: setting.midtrans_client_key,
+        midtrans_server_key: maskedServerKey,
+        midtrans_server_key_set: !!setting.midtrans_server_key,
+        midtrans_mode: setting.midtrans_mode || 'sandbox',
+        is_midtrans_active: setting.is_midtrans_active || false,
+        webhook_url: webhookUrl
       }
     });
   } catch (err) {
-    console.error('Error getting Google settings:', err);
-    return res.status(500).json({ success: false, message: 'Failed to get Google settings' });
+    console.error('Error getting Midtrans settings:', err);
+    return res.status(500).json({ success: false, message: 'Failed to get Midtrans settings' });
   }
 };
 
-const updateGoogleSettings = async (req, res) => {
+const updateMidtransSettings = async (req, res) => {
   try {
-    const { google_client_id, google_client_secret, google_redirect_uri } = req.body;
-
-    if (!google_client_id || typeof google_client_id !== 'string' || !google_client_id.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Google client ID is required'
-      });
-    }
-    if (!google_client_secret || typeof google_client_secret !== 'string' || !google_client_secret.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Google client secret is required'
-      });
-    }
-    if (!google_redirect_uri || typeof google_redirect_uri !== 'string' || !google_redirect_uri.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Google redirect URI is required'
-      });
-    }
-
     let setting = await Setting.findOne();
-    if (!setting) {
-      setting = await Setting.create({});
-    }
+    if (!setting) setting = await Setting.create({});
 
-    const update = {
-      google_client_id: google_client_id.trim(),
-      google_client_secret: google_client_secret.trim(),
-      google_redirect_uri: google_redirect_uri.trim()
-    };
+    const midtrans_merchant_id = (req.body.midtrans_merchant_id && req.body.midtrans_merchant_id.trim() !== '') ? req.body.midtrans_merchant_id.trim() : setting.midtrans_merchant_id;
+    const midtrans_client_key = (req.body.midtrans_client_key && req.body.midtrans_client_key.trim() !== '') ? req.body.midtrans_client_key.trim() : setting.midtrans_client_key;
+    const midtrans_server_key = (req.body.midtrans_server_key && req.body.midtrans_server_key.trim() !== '') ? req.body.midtrans_server_key.trim() : setting.midtrans_server_key;
+    const midtrans_mode = req.body.midtrans_mode || setting.midtrans_mode || 'sandbox';
+    const is_midtrans_active = req.body.is_midtrans_active !== undefined ? req.body.is_midtrans_active : setting.is_midtrans_active;
 
-    const updatedSetting = await Setting.findByIdAndUpdate(
-      setting._id,
-      update,
-      { returnDocument: 'after', runValidators: true }
-    );
+    setting.midtrans_merchant_id = midtrans_merchant_id;
+    setting.midtrans_client_key = midtrans_client_key;
+    setting.midtrans_server_key = midtrans_server_key;
+    setting.midtrans_mode = midtrans_mode || 'sandbox';
+    setting.is_midtrans_active = is_midtrans_active;
+    await setting.save();
 
-    process.env.GOOGLE_CLIENT_ID = updatedSetting.google_client_id;
-    process.env.GOOGLE_CLIENT_SECRET = updatedSetting.google_client_secret;
-    process.env.GOOGLE_REDIRECT_URI = updatedSetting.google_redirect_uri;
-
-    const envVars = {
-      GOOGLE_CLIENT_ID: updatedSetting.google_client_id,
-      GOOGLE_CLIENT_SECRET: updatedSetting.google_client_secret,
-      GOOGLE_REDIRECT_URI: updatedSetting.google_redirect_uri
-    };
-    await updateEnvFile(envVars);
-
-    const response = updatedSetting.toObject();
-    delete response.google_client_secret;
-    response.google_client_secret_set = true;
+    const response = setting.toObject();
+    delete response.midtrans_server_key;
+    response.midtrans_server_key_set = true;
 
     return res.status(200).json({
       success: true,
-      message: 'Google OAuth settings configured successfully',
+      message: 'Midtrans settings configured successfully',
       data: response
     });
   } catch (err) {
-    console.error('Error updating Google settings:', err);
+    console.error('Error updating Midtrans settings:', err);
     return res.status(400).json({
       success: false,
-      message: err.message || 'Failed to configure Google OAuth'
+      message: err.message || 'Failed to configure Midtrans'
     });
   }
 };
 
-export { getAllSettings, updateSetting, testMail, updateStripeSettings, getStripeSettings, updateRazorpaySettings, getRazorpaySettings, updatePayPalSettings, getPayPalSettings, updateGoogleSettings, getGoogleSettings };
+const getMollieSettings = async (req, res) => {
+  try {
+    const setting = await Setting.findOne().select('mollie_api_key mollie_mode is_mollie_active').lean();
+    if (!setting) {
+      return res.status(200).json({ data: null });
+    }
+    const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+    const webhookUrl = `${baseUrl.replace(/\/$/, '')}/api/webhook/mollie`;
+
+    let maskedKey = null;
+    if (setting.mollie_api_key && setting.mollie_api_key.length > 8) {
+      maskedKey = setting.mollie_api_key.substring(0, 8) + '****';
+    }
+
+    return res.status(200).json({
+      data: {
+        mollie_api_key: maskedKey,
+        mollie_api_key_set: !!setting.mollie_api_key,
+        mollie_mode: setting.mollie_mode || 'sandbox',
+        is_mollie_active: setting.is_mollie_active || false,
+        webhook_url: webhookUrl
+      }
+    });
+  } catch (err) {
+    console.error('Error getting Mollie settings:', err);
+    return res.status(500).json({ success: false, message: 'Failed to get Mollie settings' });
+  }
+};
+
+const updateMollieSettings = async (req, res) => {
+  try {
+    let setting = await Setting.findOne();
+    if (!setting) setting = await Setting.create({});
+
+    const mollie_api_key = (req.body.mollie_api_key && req.body.mollie_api_key.trim() !== '') ? req.body.mollie_api_key.trim() : setting.mollie_api_key;
+    const mollie_mode = req.body.mollie_mode || setting.mollie_mode || 'sandbox';
+    const is_mollie_active = req.body.is_mollie_active !== undefined ? req.body.is_mollie_active : setting.is_mollie_active;
+
+    setting.mollie_api_key = mollie_api_key;
+    setting.mollie_mode = mollie_mode || 'sandbox';
+    setting.is_mollie_active = is_mollie_active;
+    await setting.save();
+
+    const response = setting.toObject();
+    delete response.mollie_api_key;
+    response.mollie_api_key_set = true;
+
+    return res.status(200).json({
+      success: true,
+      message: 'Mollie settings configured successfully',
+      data: response
+    });
+  } catch (err) {
+    console.error('Error updating Mollie settings:', err);
+    return res.status(400).json({
+      success: false,
+      message: err.message || 'Failed to configure Mollie'
+    });
+  }
+};
+
+export { getAllSettings, updateSetting, testMail, updateStripeSettings, getStripeSettings, updateRazorpaySettings, getRazorpaySettings, updatePayPalSettings, getPayPalSettings, getMidtransSettings, updateMidtransSettings, getMollieSettings, updateMollieSettings };
+

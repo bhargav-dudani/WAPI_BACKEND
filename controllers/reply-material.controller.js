@@ -6,9 +6,28 @@ import { deleteFile } from '../utils/aws-storage.js';
 
 const buildAbsoluteUrl = (req, maybeRelativeUrl) => {
     if (!maybeRelativeUrl) return null;
-    if (maybeRelativeUrl.startsWith('http://') || maybeRelativeUrl.startsWith('https://')) return maybeRelativeUrl;
+    let url = maybeRelativeUrl.replace(/\\/g, '/');
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+        if (url.includes('/uploads/') && (url.includes('/opt/') || url.includes('/home/') || url.includes('//'))) {
+            try {
+                const urlObj = new URL(url);
+                const uploadIndex = urlObj.pathname.indexOf('/uploads/');
+                if (uploadIndex !== -1) {
+                    return `${urlObj.protocol}//${urlObj.host}${urlObj.pathname.substring(uploadIndex)}${urlObj.search}`;
+                }
+            } catch (e) {}
+        }
+        return url;
+    }
+    if (url.includes('/uploads/')) {
+        url = url.substring(url.indexOf('/uploads/'));
+    } else if (url.includes('uploads/')) {
+        url = '/' + url.substring(url.indexOf('uploads/'));
+    } else if (!url.startsWith('/')) {
+        url = '/' + url;
+    }
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    return `${baseUrl}${maybeRelativeUrl.startsWith('/') ? '' : '/'}${maybeRelativeUrl}`;
+    return `${baseUrl}${url}`;
 };
 
 

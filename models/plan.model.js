@@ -71,6 +71,10 @@ const planSchema = new mongoose.Schema({
         type: String,
         default: null
     },
+    midtrans_plan_id: {
+        type: String,
+        default: null
+    },
     features: {
         contacts: {
             type: Number,

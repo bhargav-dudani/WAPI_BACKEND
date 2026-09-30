@@ -4,7 +4,7 @@ import axios from 'axios';
 import { Contact, Message, ReplyMaterial, Template, Chatbot, ProcessedSocialComment } from '../../models/index.js';
 import { callAIModel } from '../../utils/ai-utils.js';
 
-const META_GRAPH_API_VERSION = 'v22.0';
+const META_GRAPH_API_VERSION = process.env.WHATSAPP_API_VERSION || 'v22.0';
 
 class SocialAutomationService {
 
@@ -412,79 +412,99 @@ class SocialAutomationService {
         const platform = automation.platform;
 
         try {
+            let isUserFollowing = false;
+
             if (automation.requires_following && !connectionData.isFollowGateBypass) {
-                const msgText = automation.follow_gate_message || "Please make sure you are following our page to receive the details.";
-                const btnYes = automation.follow_gate_button_yes || "I Follow";
-                const btnNo = automation.follow_gate_button_no || "Not Now";
-
-                const sendResponse = await omnichannelService.sendMessage({
-                    platform,
-                    workspace_id: workspaceId,
-                    user_id: userId,
-                    page_id: pageOrAccountId,
-                    recipient_id: senderId,
-                    message_type: 'interactive',
-                    text: msgText,
-                    buttons: [
-                        { type: 'postback', title: btnYes, payload: `FOLLOW_GATE_YES___${automation._id}` },
-                        { type: 'postback', title: btnNo, payload: `FOLLOW_GATE_NO___${automation._id}` }
-                    ],
-                    reply_to_comment_id: automation.automation_type === 'story_reply' ? null : commentId
-                });
-
-                try {
-                    const contact = await Contact.findOne({
-                        user_id: userId,
-                        $or: [{ facebook_page_scoped_id: senderId }, { instagram_scoped_id: senderId }]
-                    });
-
-                    if (contact) {
-                        const newMessage = await Message.create({
-                            workspace_id: workspaceId,
-                            user_id: userId,
-                            contact_id: contact._id,
-                            platform: platform,
-                            provider: platform,
-                            sender_id: pageOrAccountId,
-                            recipient_id: senderId,
-                            sender_number: pageOrAccountId,
-                            recipient_number: senderId,
-                            direction: 'outbound',
-                            message_type: 'interactive',
-                            content: msgText,
-                            interactive_data: {
-                                interactiveType: 'button', buttons: [
-                                    { type: 'postback', title: btnYes, payload: `FOLLOW_GATE_YES___${automation._id}` },
-                                    { type: 'postback', title: btnNo, payload: `FOLLOW_GATE_NO___${automation._id}` }
-                                ]
-                            },
-                            from_me: true,
-                            delivery_status: 'delivered',
-                            read_status: 'unread',
-                            wa_timestamp: new Date(),
-                            platform_message_id: sendResponse?.message_id
-                        });
-
-                        if (connectionData.io) {
-                            connectionData.io.emit('whatsapp:message', {
-                                id: newMessage._id.toString(),
-                                wa_message_id: newMessage.platform_message_id || newMessage.wa_message_id || newMessage._id.toString(),
-                                content: newMessage.content,
-                                interactiveData: newMessage.interactive_data || null,
-                                messageType: newMessage.message_type,
-                                platform: newMessage.platform,
-                                provider: newMessage.provider,
-                                timestamp: newMessage.wa_timestamp,
-                                contact_id: contact._id.toString(),
-                                sender: { id: pageOrAccountId },
-                                recipient: { id: senderId }
-                            });
+                if (platform === 'instagram' && pageAccessToken && senderId && !senderId.startsWith('fb_comment_')) {
+                    try {
+                        const baseUrl = pageAccessToken.startsWith('IGA') ? 'https://graph.instagram.com' : 'https://graph.facebook.com';
+                        const checkFollowUrl = `${baseUrl}/${META_GRAPH_API_VERSION}/${senderId}?fields=is_user_follow_business&access_token=${pageAccessToken}`;
+                        const checkRes = await axios.get(checkFollowUrl);
+                        if (checkRes.data && checkRes.data.is_user_follow_business !== undefined) {
+                            isUserFollowing = Boolean(checkRes.data.is_user_follow_business);
+                            console.log(`[SocialAutomation] Follow check for ${senderId}: is_user_follow_business=${isUserFollowing}`);
                         }
+                    } catch (apiErr) {
+                        console.warn('[SocialAutomation] Could not verify IG follow status:', apiErr?.response?.data || apiErr.message);
                     }
-                } catch (dbErr) {
-                    console.error('[SocialAutomation] Error saving follow gate outbound message to DB:', dbErr);
                 }
 
+                if (!isUserFollowing) {
+                    const msgText = automation.follow_gate_message || "Please make sure you are following our page to receive the details.";
+                    const btnYes = automation.follow_gate_button_yes || "I Follow";
+                    const btnNo = automation.follow_gate_button_no || "Not Now";
+
+                    const sendResponse = await omnichannelService.sendMessage({
+                        platform,
+                        workspace_id: workspaceId,
+                        user_id: userId,
+                        page_id: pageOrAccountId,
+                        recipient_id: senderId,
+                        message_type: 'interactive',
+                        text: msgText,
+                        buttons: [
+                            { type: 'postback', title: btnYes, payload: `FOLLOW_GATE_YES___${automation._id}` },
+                            { type: 'postback', title: btnNo, payload: `FOLLOW_GATE_NO___${automation._id}` }
+                        ],
+                        reply_to_comment_id: automation.automation_type === 'story_reply' ? null : commentId
+                    });
+
+                    try {
+                        const contact = await Contact.findOne({
+                            user_id: userId,
+                            $or: [{ facebook_page_scoped_id: senderId }, { instagram_scoped_id: senderId }]
+                        });
+
+                        if (contact) {
+                            const newMessage = await Message.create({
+                                workspace_id: workspaceId,
+                                user_id: userId,
+                                contact_id: contact._id,
+                                platform: platform,
+                                provider: platform,
+                                sender_id: pageOrAccountId,
+                                recipient_id: senderId,
+                                sender_number: pageOrAccountId,
+                                recipient_number: senderId,
+                                direction: 'outbound',
+                                message_type: 'interactive',
+                                content: msgText,
+                                interactive_data: {
+                                    interactiveType: 'button', buttons: [
+                                        { type: 'postback', title: btnYes, payload: `FOLLOW_GATE_YES___${automation._id}` },
+                                        { type: 'postback', title: btnNo, payload: `FOLLOW_GATE_NO___${automation._id}` }
+                                    ]
+                                },
+                                from_me: true,
+                                delivery_status: 'delivered',
+                                read_status: 'unread',
+                                wa_timestamp: new Date(),
+                                platform_message_id: sendResponse?.message_id
+                            });
+
+                            if (connectionData.io) {
+                                connectionData.io.emit('whatsapp:message', {
+                                    id: newMessage._id.toString(),
+                                    wa_message_id: newMessage.platform_message_id || newMessage.wa_message_id || newMessage._id.toString(),
+                                    content: newMessage.content,
+                                    interactiveData: newMessage.interactive_data || null,
+                                    messageType: newMessage.message_type,
+                                    platform: newMessage.platform,
+                                    provider: newMessage.provider,
+                                    timestamp: newMessage.wa_timestamp,
+                                    contact_id: contact._id.toString(),
+                                    sender: { id: pageOrAccountId },
+                                    recipient: { id: senderId }
+                                });
+                            }
+                        }
+                    } catch (dbErr) {
+                        console.error('[SocialAutomation] Error saving follow gate outbound message to DB:', dbErr);
+                    }
+                } else {
+                    console.log(`[SocialAutomation] User ${senderId} is already following! Bypassing follow gate.`);
+                    await this.sendAutomationReplyMaterial(automation, senderId, commentId, connectionData);
+                }
             } else {
                 await this.sendAutomationReplyMaterial(automation, senderId, commentId, connectionData);
             }

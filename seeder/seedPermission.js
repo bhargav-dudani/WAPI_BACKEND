@@ -688,12 +688,50 @@ export const modules = {
             ADMIN: ['view', 'update']
         }
     },
+    social_media_connections: {
+        actions: {
+            view: 'view.social_media_connections',
+            connect: 'connect.social_media_connections',
+            disconnect: 'disconnect.social_media_connections',
+        },
+        roles: {
+            ADMIN: ['view', 'connect', 'disconnect'],
+            USER: ['view', 'connect', 'disconnect']
+        }
+    },
+    social_publish: {
+        actions: {
+            view: 'view.social_publish',
+            publish: 'publish.social_publish',
+        },
+        roles: {
+            ADMIN: ['view', 'publish'],
+            USER: ['view', 'publish']
+        }
+    },
 };
 
 
 const seedPermission = async () => {
     try {
         console.log('Seeding permissions...');
+
+        // Clean up obsolete social_media_connections and social_publish permission slugs
+        const obsoleteSlugs = [
+            'create.social_media_connections',
+            'update.social_media_connections',
+            'delete.social_media_connections',
+            'create.social_publish',
+            'update.social_publish',
+            'delete.social_publish'
+        ];
+        const obsoletePerms = await Permission.find({ slug: { $in: obsoleteSlugs } });
+        const obsoleteIds = obsoletePerms.map(p => p._id);
+        if (obsoleteIds.length > 0) {
+            await RolePermission.deleteMany({ permission_id: { $in: obsoleteIds } });
+            await Permission.deleteMany({ _id: { $in: obsoleteIds } });
+            console.log(`Cleaned up ${obsoleteIds.length} obsolete permissions.`);
+        }
 
         const permissionList = [];
 
@@ -846,3 +884,15 @@ const seedPermission = async () => {
 };
 
 export default seedPermission;
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+    import('../models/index.js').then(async ({ connectDB }) => {
+        await connectDB();
+        await seedPermission();
+        process.exit(0);
+    }).catch(err => {
+        console.error(err);
+        process.exit(1);
+    });
+}
+

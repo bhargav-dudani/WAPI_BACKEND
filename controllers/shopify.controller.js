@@ -96,7 +96,7 @@ export const saveShopifyConfig = async (req, res) => {
     } catch (valError) {
       return res.status(400).json({
         success: false,
-        message: 'Failed to connect to Shopify store. Please verify your shop domain and access token.',
+        message: valError.message || 'Failed to connect to Shopify store. Please verify your shop domain and access token.',
         details: valError.message
       });
     }

@@ -7,6 +7,8 @@ import AWSStorage from './aws-storage.js';
 import ffmpegPath from 'ffmpeg-static';
 import { execFile } from 'child_process';
 const writeFile = promisify(fs.writeFile);
+const WHATSAPP_API_VERSION = process.env.WHATSAPP_API_VERSION || 'v19.0';
+
 
 
 export function parseIncomingMessage(message) {
@@ -130,13 +132,14 @@ export function parseIncomingMessage(message) {
       }
     };
   }
+
   return { content, mediaId, fileType, mimeType, interactiveId, interactiveData, replyMessageId, reactionMessageId, reactionEmoji };
 }
 
 
 export async function getWhatsAppMediaUrl(mediaId, access_token) {
   const res = await axios.get(
-    `https://graph.facebook.com/v19.0/${mediaId}`,
+    `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${mediaId}`,
     {
       headers: { Authorization: `Bearer ${access_token}` }
     }

@@ -215,5 +215,49 @@
     ],
     "subject": "Plan Expired - {{company_name}}",
     "content": "<p>Hello {{user_name}},</p><p>Your plan <strong>{{plan_name}}</strong> has expired. Please renew to continue using our services.</p>"
+  },
+  {
+    "name": "WhatsApp Meta Status Update",
+    "description": "Sent when Meta changes your WhatsApp Business Account or Phone Number status.",
+    "slug": "whatsapp-status-update",
+    "shortcodes": [
+      {
+        "type": "variable",
+        "text": "User Name",
+        "action": "{{user_name}}"
+      },
+      {
+        "type": "variable",
+        "text": "WABA Name",
+        "action": "{{waba_name}}"
+      },
+      {
+        "type": "variable",
+        "text": "Status Title",
+        "action": "{{status_title}}"
+      },
+      {
+        "type": "variable",
+        "text": "Status Message",
+        "action": "{{status_message}}"
+      },
+      {
+        "type": "variable",
+        "text": "Required Action",
+        "action": "{{required_action}}"
+      },
+      {
+        "type": "variable",
+        "text": "Action URL",
+        "action": "{{action_url}}"
+      },
+      {
+        "type": "variable",
+        "text": "Action Text",
+        "action": "{{action_text}}"
+      }
+    ],
+    "subject": "WhatsApp Connection Alert: {{status_title}} - {{company_name}}",
+    "content": "<p>Hello {{user_name}},</p><p>We received an update from Meta regarding your WhatsApp Business account connection (<strong>{{waba_name}}</strong>).</p><p><strong>Status Update:</strong> {{status_message}}</p><p><strong>Required Action:</strong> {{required_action}}</p><p>You can manage your connection directly from your dashboard or click the button below to open Meta WhatsApp Manager.</p><p><a href=\"{{action_url}}\" class=\"btn\">{{action_text}}</a></p>"
   }
 ]

@@ -37,44 +37,44 @@ const __dirname = path.dirname(__filename);
 const recentlySentMessageIds = new Set();
 
 function transcodeToOggOpus(inputBuffer) {
-  return new Promise((resolve, reject) => {
-    const tempDir = os.tmpdir();
-    const inputPath = path.join(tempDir, `input_${Date.now()}_${Math.random().toString(36).slice(2)}.tmp`);
-    const outputPath = path.join(tempDir, `output_${Date.now()}_${Math.random().toString(36).slice(2)}.ogg`);
+    return new Promise((resolve, reject) => {
+        const tempDir = os.tmpdir();
+        const inputPath = path.join(tempDir, `input_${Date.now()}_${Math.random().toString(36).slice(2)}.tmp`);
+        const outputPath = path.join(tempDir, `output_${Date.now()}_${Math.random().toString(36).slice(2)}.ogg`);
 
-    fs.writeFile(inputPath, inputBuffer, (err) => {
-      if (err) return reject(err);
+        fs.writeFile(inputPath, inputBuffer, (err) => {
+            if (err) return reject(err);
 
-      const args = [
-        '-i', inputPath,
-        '-vn',
-        '-c:a', 'libopus',
-        '-b:a', '16k',
-        '-ac', '1',
-        '-ar', '16000',
-        '-y',
-        outputPath
-      ];
+            const args = [
+                '-i', inputPath,
+                '-vn',
+                '-c:a', 'libopus',
+                '-b:a', '16k',
+                '-ac', '1',
+                '-ar', '16000',
+                '-y',
+                outputPath
+            ];
 
-      execFile(ffmpegPath, args, (execErr, stdout, stderr) => {
-        fs.unlink(inputPath, () => {});
+            execFile(ffmpegPath, args, (execErr, stdout, stderr) => {
+                fs.unlink(inputPath, () => { });
 
-        if (execErr) {
-          fs.unlink(outputPath, () => {});
-          console.error('[Baileys] FFmpeg exec error:', execErr.message);
-          console.error('[Baileys] FFmpeg stderr:', stderr);
-          return reject(execErr);
-        }
+                if (execErr) {
+                    fs.unlink(outputPath, () => { });
+                    console.error('[Baileys] FFmpeg exec error:', execErr.message);
+                    console.error('[Baileys] FFmpeg stderr:', stderr);
+                    return reject(execErr);
+                }
 
-        fs.readFile(outputPath, (readErr, outputBuffer) => {
-          fs.unlink(outputPath, () => {});
+                fs.readFile(outputPath, (readErr, outputBuffer) => {
+                    fs.unlink(outputPath, () => { });
 
-          if (readErr) return reject(readErr);
-          resolve(outputBuffer);
+                    if (readErr) return reject(readErr);
+                    resolve(outputBuffer);
+                });
+            });
         });
-      });
     });
-  });
 }
 
 export default class BaileysProvider extends BaseProvider {
@@ -143,6 +143,7 @@ export default class BaileysProvider extends BaseProvider {
                     keys: makeCacheableSignalKeyStore(state.keys, logger)
                 },
                 logger,
+                defaultQueryTimeoutMs: 60000,
                 getMessage: async (key) => {
                     return { conversation: 'Hello' };
                 }
@@ -178,10 +179,14 @@ export default class BaileysProvider extends BaseProvider {
                 if (connection === 'close') {
                     const errorCode = (lastDisconnect.error)?.output?.statusCode;
                     const errorMessage = (lastDisconnect.error)?.message || (lastDisconnect.error)?.toString();
-                    const isQRTimeout = errorCode === 408 || errorMessage?.includes('QR refs attempts ended');
-                    const shouldReconnect = errorCode !== DisconnectReason.loggedOut && !isQRTimeout;
+                    
+                    const credsFile = path.join(sessionDir, 'creds.json');
+                    const hasSavedCreds = fs.existsSync(credsFile) || !!state.creds?.registered;
+                    const isLoggedOut = errorCode === DisconnectReason.loggedOut;
+                    const isQRTimeout = !hasSavedCreds && (errorCode === 408 || errorMessage?.includes('QR refs attempts ended'));
+                    const shouldReconnect = !isLoggedOut && !isQRTimeout;
 
-                    console.log(`Connection closed for WABA ${wabaId}. Error: ${errorMessage} (Code: ${errorCode}), reconnecting: ${shouldReconnect}`);
+                    console.log(`Connection closed for WABA ${wabaId}. Error: ${errorMessage} (Code: ${errorCode}), hasSavedCreds: ${hasSavedCreds}, reconnecting: ${shouldReconnect}`);
 
                     this.sockets.delete(wabaId.toString());
 
@@ -189,30 +194,14 @@ export default class BaileysProvider extends BaseProvider {
                         await delay(5000);
 
                         const freshData = await WhatsappWaba.findById(wabaId).lean();
-                        await this.initializeConnection(userId, {
-                            ...(freshData || connectionData),
-                            sync_chat: connectionData.sync_chat
-                        });
-                    } else {
-                        if (isQRTimeout) {
-                            console.log(`QR timeout for WABA ${wabaId}. Breaking loop.`);
-                        } else {
-                            console.log(`Baileys logged out for WABA ${wabaId}. Cleaning up session and chat history...`);
-                            try {
-                                const phoneDoc = await WhatsappPhoneNumber.findOne({ waba_id: wabaId }).lean();
-                                if (phoneDoc?._id) {
-
-                                    const { deletedCount } = await Message.deleteMany({
-                                        user_id: userId,
-                                        whatsapp_phone_number_id: phoneDoc._id
-                                    });
-                                    console.log(`Deleted ${deletedCount} messages for phone ${phoneDoc.display_phone_number} (WABA ${wabaId}) on logout.`);
-                                }
-                            } catch (delErr) {
-                                console.error(`Error deleting messages on logout for WABA ${wabaId}:`, delErr.message);
-                            }
+                        if (freshData && !freshData.deleted_at) {
+                            await this.initializeConnection(userId, {
+                                ...(freshData || connectionData),
+                                sync_chat: connectionData.sync_chat
+                            });
                         }
-
+                    } else if (isLoggedOut) {
+                        console.log(`Baileys logged out for WABA ${wabaId}. Cleaning up session credentials...`);
                         await WhatsappWaba.findByIdAndUpdate(wabaId, {
                             connection_status: 'disconnected',
                             qr_code: null
@@ -227,25 +216,21 @@ export default class BaileysProvider extends BaseProvider {
                             }
                         }
 
-                        this.emitStatus(wabaId, isQRTimeout ? 'qr_timeout' : 'disconnected', {
+                        this.emitStatus(wabaId, 'disconnected', {
                             message: errorMessage,
                             code: errorCode
                         });
+                    } else if (isQRTimeout) {
+                        console.log(`QR timeout for WABA ${wabaId}. Breaking loop.`);
+                        await WhatsappWaba.findByIdAndUpdate(wabaId, {
+                            connection_status: 'disconnected',
+                            qr_code: null
+                        });
 
-
-                        if (!isQRTimeout) {
-                            const checkWaba = await WhatsappWaba.findById(wabaId).lean();
-                            if (checkWaba && !checkWaba.deleted_at) {
-                                console.log(`Regenerating QR code for WABA ${wabaId} after disconnect...`);
-                                setTimeout(() => {
-                                    this.initializeConnection(userId, connectionData).catch(err => {
-                                        console.error(`Failed to regenerate QR code for WABA ${wabaId}:`, err);
-                                    });
-                                }, 5000);
-                            } else {
-                                console.log(`Skipping QR regeneration for WABA ${wabaId} as it is marked for deletion.`);
-                            }
-                        }
+                        this.emitStatus(wabaId, 'qr_timeout', {
+                            message: errorMessage,
+                            code: errorCode
+                        });
                     }
                 } else if (connection === 'open') {
                     console.log(`Baileys connection opened for WABA ${wabaId}`);
@@ -280,7 +265,7 @@ export default class BaileysProvider extends BaseProvider {
                     for (const msg of m.messages) {
                         const msgKeys = msg.message ? Object.keys(msg.message) : [];
                         console.log(`[Baileys DEBUG] Raw message: ${JSON.stringify(msg)}`);
-                        await this.handleIncomingMessage(userId, wabaId, msg);
+                        await this.handleIncomingMessage(userId, wabaId, msg, m.type === 'append');
                     }
                 }
             });
@@ -386,7 +371,7 @@ export default class BaileysProvider extends BaseProvider {
         }
     }
 
-    async handleIncomingMessage(userId, wabaId, msg) {
+    async handleIncomingMessage(userId, wabaId, msg, isAppend = false) {
         try {
 
             const remoteJid = msg.key.remoteJid;
@@ -428,7 +413,10 @@ export default class BaileysProvider extends BaseProvider {
             }
 
             let senderNumber = senderJid.split('@')[0];
-            if (senderJid.endsWith('@lid')) {
+            const isLid = senderJid.endsWith('@lid');
+            let resolvedPhone = null;
+
+            if (isLid) {
                 const sock = this.sockets.get(wabaId.toString());
                 let resolvedPnJid = null;
                 try {
@@ -441,16 +429,23 @@ export default class BaileysProvider extends BaseProvider {
                 }
 
                 if (resolvedPnJid && resolvedPnJid.endsWith('@s.whatsapp.net')) {
-                    senderNumber = resolvedPnJid.split('@')[0];
+                    resolvedPhone = resolvedPnJid.split('@')[0];
                 } else {
                     const phoneJid = msg.key.remoteJidAlt || msg.key.participant;
                     if (phoneJid && phoneJid.endsWith('@s.whatsapp.net')) {
-                        senderNumber = phoneJid.split('@')[0];
+                        resolvedPhone = phoneJid.split('@')[0];
                     } else if (sock?.store?.contacts?.[senderJid]?.id) {
-                        senderNumber = sock.store.contacts[senderJid].id.split('@')[0];
+                        const storeId = sock.store.contacts[senderJid].id;
+                        if (storeId && storeId.endsWith('@s.whatsapp.net')) {
+                            resolvedPhone = storeId.split('@')[0];
+                        }
                     } else if (msg.pushName) {
                         console.log(`[Baileys DEBUG] Using LID number as sender: ${senderNumber} (pushName: ${msg.pushName})`);
                     }
+                }
+
+                if (resolvedPhone) {
+                    senderNumber = resolvedPhone;
                 }
             }
 
@@ -478,24 +473,66 @@ export default class BaileysProvider extends BaseProvider {
                 return;
             }
 
-            let contact = await Contact.findOne({
-                created_by: userId,
-                $or: [
-                    { phone_number: senderNumber },
-                    { whatsapp_username: senderNumber },
-                    { 'metadata.whatsapp_lid': senderNumber }
-                ]
-            });
+            const wabaDoc = await WhatsappWaba.findById(wabaId).select('workspace_id').lean();
+            const workspaceId = wabaDoc?.workspace_id || null;
+            const rawLid = isLid ? senderJid.split('@')[0] : null;
+
+            const orConditions = [];
+            if (rawLid) {
+                orConditions.push({ whatsapp_lid: rawLid });
+                orConditions.push({ 'metadata.whatsapp_lid': rawLid });
+            }
+            if (resolvedPhone || !isLid) {
+                orConditions.push({ phone_number: senderNumber });
+            }
+            if (msg.username) {
+                orConditions.push({ whatsapp_username: msg.username });
+            }
+
+            let contact = null;
+            if (orConditions.length > 0) {
+                const query = {
+                    $or: [
+                        { user_id: userId },
+                        { created_by: userId }
+                    ],
+                    $and: [{ $or: orConditions }]
+                };
+                if (workspaceId) {
+                    query.$and.push({ $or: [{ workspace_id: workspaceId }, { workspace_id: null }] });
+                }
+                contact = await Contact.findOne(query).sort({ workspace_id: -1 });
+            }
 
             const waUsername = msg.username || null;
 
             if (contact) {
-                if (contact.phone_number !== senderNumber && !senderJid.endsWith('@s.whatsapp.net')) {
-                    console.log(`[Baileys DEBUG] Mapping incoming LID ${senderNumber} to existing contact phone number: ${contact.phone_number}`);
+                let needsSave = false;
+                if (rawLid) {
+                    if (contact.whatsapp_lid !== rawLid) {
+                        contact.whatsapp_lid = rawLid;
+                        needsSave = true;
+                    }
+                    if (!contact.metadata || contact.metadata.whatsapp_lid !== rawLid) {
+                        contact.metadata = { ...(contact.metadata || {}), whatsapp_lid: rawLid };
+                        needsSave = true;
+                    }
+                }
+                if (contact.phone_number && !resolvedPhone && isLid) {
                     senderNumber = contact.phone_number;
                 }
-
-                let needsSave = false;
+                if (resolvedPhone && (!contact.phone_number || contact.phone_number !== resolvedPhone)) {
+                    contact.phone_number = resolvedPhone;
+                    needsSave = true;
+                }
+                if (workspaceId && !contact.workspace_id) {
+                    contact.workspace_id = workspaceId;
+                    needsSave = true;
+                }
+                if (msg.pushName && (!contact.name || contact.name === senderNumber || (rawLid && contact.name === rawLid))) {
+                    contact.name = msg.pushName;
+                    needsSave = true;
+                }
                 if (waUsername && contact.whatsapp_username !== waUsername) {
                     contact.whatsapp_username = waUsername;
                     needsSave = true;
@@ -508,25 +545,27 @@ export default class BaileysProvider extends BaseProvider {
                     await contact.save();
                 }
             } else {
-                const isLid = senderJid.endsWith('@lid');
-                const isPhone = /^\d+$/.test(senderNumber);
                 const contactFields = {
-                    name: msg.pushName || senderNumber,
+                    name: msg.pushName || (isLid && !resolvedPhone ? `WA User (${rawLid ? rawLid.slice(-4) : 'LID'})` : senderNumber),
                     user_id: userId,
                     created_by: userId,
+                    workspace_id: workspaceId,
                     source: 'baileys',
-                    metadata: isLid ? { whatsapp_lid: senderNumber } : {}
+                    metadata: isLid ? { whatsapp_lid: rawLid } : {}
                 };
-                if (isPhone) {
+                if (isLid) {
+                    contactFields.whatsapp_lid = rawLid;
+                }
+                if (resolvedPhone || !isLid) {
                     contactFields.phone_number = senderNumber;
                 } else {
-                    contactFields.whatsapp_username = senderNumber;
+                    contactFields.phone_number = null;
                 }
                 if (waUsername) {
                     contactFields.whatsapp_username = waUsername;
                 }
                 contact = await Contact.create(contactFields);
-                console.log(`[Baileys DEBUG] Created new contact for ${senderNumber} (isLid: ${isLid})`);
+                console.log(`[Baileys DEBUG] Created new contact for ${senderNumber} (isLid: ${isLid}, workspace: ${workspaceId})`);
             }
 
             const unwrapped = this.unwrapMessage(msg.message);
@@ -549,6 +588,8 @@ export default class BaileysProvider extends BaseProvider {
                 sender_number: fromMe ? myNumber : senderNumber,
                 recipient_number: fromMe ? senderNumber : myNumber,
                 user_id: userId,
+                workspace_id: workspaceId,
+                whatsapp_connection_id: wabaId,
                 contact_id: contact._id,
                 whatsapp_phone_number_id: phone?._id || null,
                 content: content,
@@ -556,6 +597,8 @@ export default class BaileysProvider extends BaseProvider {
                 file_url: fileUrl,
                 from_me: fromMe,
                 direction: fromMe ? 'outbound' : 'inbound',
+                delivery_status: fromMe ? 'pending' : 'delivered',
+                read_status: 'unread',
                 wa_message_id: msg.key.id,
                 wa_jid: senderJid,
                 wa_timestamp: new Date(msg.messageTimestamp * 1000),
@@ -576,7 +619,7 @@ export default class BaileysProvider extends BaseProvider {
                         id: (() => {
                             try {
                                 return JSON.parse(unwrapped.interactiveResponseMessage.nativeFlowResponseMessage?.paramsJson || '{}').id;
-                            } catch(e) { return null; }
+                            } catch (e) { return null; }
                         })(),
                         title: unwrapped.interactiveResponseMessage.nativeFlowResponseMessage?.name || 'quick_reply'
                     } : undefined,
@@ -678,7 +721,7 @@ export default class BaileysProvider extends BaseProvider {
                                             }
                                         }
                                     };
-                                    
+
                                     const { default: metaFlowService } = await import('../../meta-flow.service.js');
                                     const submission = await metaFlowService.handleFlowSubmission(fakeMessage, phone, contact);
                                     if (submission) {
@@ -695,8 +738,8 @@ export default class BaileysProvider extends BaseProvider {
                     }
 
                     const wabaData = await WhatsappWaba.findById(wabaId).select('workspace_id').lean();
-                    const interactiveId = messageDoc.interactive_data?.button_reply?.id 
-                        || messageDoc.interactive_data?.list_reply?.id 
+                    const interactiveId = messageDoc.interactive_data?.button_reply?.id
+                        || messageDoc.interactive_data?.list_reply?.id
                         || null;
 
                     await automationEngine.triggerEvent("message_received", {
@@ -719,6 +762,7 @@ export default class BaileysProvider extends BaseProvider {
                     console.error('Error triggering automation engine:', automationError);
                 }
 
+            if (!fromMe && !isAppend) {
                 try {
                     const config = await WabaConfiguration.findOne({ waba_id: wabaId });
 
@@ -727,6 +771,9 @@ export default class BaileysProvider extends BaseProvider {
                     contact.is_snoozed = false;
                     if (!contact.user_id) {
                         contact.user_id = userId;
+                    }
+                    if (!contact.workspace_id && workspaceId) {
+                        contact.workspace_id = workspaceId;
                     }
                     await contact.save();
 
@@ -810,17 +857,33 @@ export default class BaileysProvider extends BaseProvider {
                     if (!automatedHandled) {
                         const matchingBot = await findMatchingBot(wabaId, content, 'baileys', contact);
                         if (matchingBot) {
-                            await sendAutomatedReply({
-                                wabaId,
-                                contactId: contact._id,
-                                replyType: matchingBot.reply_type,
-                                replyId: matchingBot.reply_id,
-                                senderNumber: senderNumber,
-                                incomingText: content,
-                                userId: userId,
-                                whatsappPhoneNumberId: phone?._id
-                            });
-                            automatedHandled = true;
+                            this.recentBotTriggers = this.recentBotTriggers || new Map();
+                            const triggerKey = `${contact._id}_${matchingBot._id}`;
+                            const lastTriggerTime = this.recentBotTriggers.get(triggerKey) || 0;
+                            if (Date.now() - lastTriggerTime < 5000) {
+                                console.log(`[Baileys] Suppressed repeated bot reply for bot ${matchingBot._id} to ${senderNumber} (debounced)`);
+                            } else {
+                                this.recentBotTriggers.set(triggerKey, Date.now());
+                                if (this.recentBotTriggers.size > 1000) {
+                                    const cutoff = Date.now() - 30000;
+                                    for (const [k, v] of this.recentBotTriggers.entries()) {
+                                        if (v < cutoff) this.recentBotTriggers.delete(k);
+                                    }
+                                }
+                                await sendAutomatedReply({
+                                    wabaId,
+                                    contactId: contact._id,
+                                    replyType: matchingBot.reply_type,
+                                    replyId: matchingBot.reply_id,
+                                    senderNumber: senderNumber,
+                                    incomingText: content,
+                                    userId: userId,
+                                    whatsappPhoneNumberId: phone?._id,
+                                    botId: matchingBot._id,
+                                    bot: matchingBot
+                                });
+                                automatedHandled = true;
+                            }
                         }
                     }
 
@@ -856,10 +919,17 @@ export default class BaileysProvider extends BaseProvider {
                             userId: userId,
                             whatsappPhoneNumberId: phone?._id
                         });
+                        automatedHandled = true;
                     }
                 } catch (autoErr) {
                     console.error('Error in advanced automated handling for Baileys:', autoErr);
                 }
+            } else if (fromMe) {
+                try {
+                    contact.last_outgoing_message_at = new Date();
+                    await contact.save();
+                } catch (saveErr) { }
+            }
             }
         } catch (error) {
             console.error('Error handling Baileys incoming message:', error);
@@ -924,7 +994,7 @@ export default class BaileysProvider extends BaseProvider {
             if (message.interactiveResponseMessage) {
                 try {
                     return JSON.parse(message.interactiveResponseMessage.nativeFlowResponseMessage?.paramsJson || '{}').id || 'interactive';
-                } catch(e) { return 'interactive'; }
+                } catch (e) { return 'interactive'; }
             }
             return '';
         }
@@ -960,7 +1030,7 @@ export default class BaileysProvider extends BaseProvider {
             }
         }
         console.log(`Baileys sending message to ${recipientNumber}: type=${messageTypeInput}, mediaUrl=${mediaUrl}`);
-        
+
         let messageType = messageTypeInput;
         if (params.file && (messageType === 'media' || !messageType)) {
             if (params.file.mimetype) {
@@ -1001,7 +1071,7 @@ export default class BaileysProvider extends BaseProvider {
                     const startTime = Date.now();
                     mediaContent = await transcodeToOggOpus(mediaContent);
                     console.log(`[Baileys] Transcoding completed in ${Date.now() - startTime}ms. New buffer size: ${mediaContent.length} bytes.`);
-                    
+
                     if (params.file.buffer) {
                         params.file.buffer = mediaContent;
                     } else {
@@ -1071,10 +1141,10 @@ export default class BaileysProvider extends BaseProvider {
             result = await sock.sendMessage(jid, { video: mediaPayload, caption: messageText }, sendOptions);
         } else if (messageType === 'audio') {
             const isPtt = params.isVoiceNote || (params.file?.mimetype && (params.file.mimetype.includes('audio/ogg') || params.file.mimetype.includes('audio/webm') || params.file.mimetype.includes('audio/mpeg') || params.file.originalname?.endsWith('.ogg') || params.file.originalname?.endsWith('.mp3')));
-            result = await sock.sendMessage(jid, { 
-                audio: mediaPayload, 
-                mimetype: params.file?.mimetype || 'audio/ogg; codecs=opus', 
-                ptt: isPtt 
+            result = await sock.sendMessage(jid, {
+                audio: mediaPayload,
+                mimetype: params.file?.mimetype || 'audio/ogg; codecs=opus',
+                ptt: isPtt
             }, sendOptions);
         } else if (messageType === 'document') {
             const fileName = params.file?.originalname || this.getFileNameFromUrl(mediaUrl) || 'document';
@@ -1409,7 +1479,7 @@ export default class BaileysProvider extends BaseProvider {
                                 { [headerMediaType]: headerMediaPayload },
                                 { upload: sock.waUploadToServer }
                             );
-                            
+
                             const msgKey = headerMediaType + 'Message';
                             if (mediaMsg && mediaMsg[msgKey]) {
                                 interactiveMessage.header[msgKey] = mediaMsg[msgKey];
@@ -1440,7 +1510,7 @@ export default class BaileysProvider extends BaseProvider {
                         if (headerText) finalCaption += `*${headerText}*\n\n`;
                         finalCaption += bodyText;
                         if (footerText) finalCaption += `\n\n_${footerText}_`;
-                        
+
                         messagePayload = {
                             [headerMediaType]: headerMediaPayload,
                             caption: finalCaption,
@@ -1484,14 +1554,14 @@ export default class BaileysProvider extends BaseProvider {
                     interactiveMessage.header.hasMediaAttachment = true;
                     try {
                         const resolvedMediaType = params.file?.mimetype?.startsWith('video/') ? 'video' :
-                                                  params.file?.mimetype?.startsWith('audio/') ? 'audio' :
-                                                  params.file?.mimetype?.startsWith('image/') ? 'image' : 'document';
-                        
+                            params.file?.mimetype?.startsWith('audio/') ? 'audio' :
+                                params.file?.mimetype?.startsWith('image/') ? 'image' : 'document';
+
                         const mediaMsg = await prepareWAMessageMedia(
                             { [resolvedMediaType]: mediaPayload || { url: mediaUrl } },
                             { upload: sock.waUploadToServer }
                         );
-                        
+
                         const msgKey = resolvedMediaType + 'Message';
                         if (mediaMsg && mediaMsg[msgKey]) {
                             interactiveMessage.header[msgKey] = mediaMsg[msgKey];
@@ -1551,7 +1621,7 @@ export default class BaileysProvider extends BaseProvider {
             } else if (interactiveType === 'cta_url') {
                 const btnDisplay = buttonParams?.display_text || buttonParams?.text || 'View';
                 const btnUrl = buttonParams?.url || '';
-                
+
                 const buttons = [
                     {
                         name: 'cta_url',
@@ -1576,14 +1646,14 @@ export default class BaileysProvider extends BaseProvider {
                     interactiveMessage.header.hasMediaAttachment = true;
                     try {
                         const resolvedMediaType = params.file?.mimetype?.startsWith('video/') ? 'video' :
-                                                  params.file?.mimetype?.startsWith('audio/') ? 'audio' :
-                                                  params.file?.mimetype?.startsWith('image/') ? 'image' : 'document';
-                        
+                            params.file?.mimetype?.startsWith('audio/') ? 'audio' :
+                                params.file?.mimetype?.startsWith('image/') ? 'image' : 'document';
+
                         const mediaMsg = await prepareWAMessageMedia(
                             { [resolvedMediaType]: mediaPayload || { url: mediaUrl } },
                             { upload: sock.waUploadToServer }
                         );
-                        
+
                         const msgKey = resolvedMediaType + 'Message';
                         if (mediaMsg && mediaMsg[msgKey]) {
                             interactiveMessage.header[msgKey] = mediaMsg[msgKey];
@@ -2023,6 +2093,8 @@ export default class BaileysProvider extends BaseProvider {
                             file_url: fileUrl,
                             from_me: fromMe,
                             direction: fromMe ? 'outbound' : 'inbound',
+                            delivery_status: fromMe ? 'pending' : 'delivered',
+                            read_status: 'unread',
                             wa_message_id: msg.key.id,
                             wa_timestamp: timestamp,
                             provider: 'baileys',

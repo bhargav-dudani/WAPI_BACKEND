@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import { PaymentGatewayConfig, PaymentTransaction } from '../models/index.js';
 import paymentGatewayService from '../services/payment-gateway.service.js';
 import paymentLinkService from '../services/payment-link.service.js';
+import { handleRazorpayPaymentCaptured } from './webhook.controller.js';
 
 export const handlePaymentWebhook = async (req, res) => {
   const { gateway } = req.params;
@@ -130,6 +131,20 @@ export const handlePaymentWebhook = async (req, res) => {
     }
 
     if (!transaction) {
+      if (gateway === 'razorpay') {
+        const payment = payload.payload?.payment?.entity;
+        const activatedSub = await handleRazorpayPaymentCaptured(payment || {
+          id: gateway_payment_id,
+          order_id: gateway_order_id,
+          amount: amount_paid
+        });
+
+        if (activatedSub) {
+          console.log(`[PaymentWebhook] Activated subscription ${activatedSub._id} via Razorpay payment`);
+          return res.json({ success: true, message: 'Subscription payment processed successfully', subscription_id: activatedSub._id });
+        }
+      }
+
       console.warn(`[PaymentWebhook] No transaction matched for ${gateway} order: ${gateway_order_id}`);
       return res.json({ success: true, message: 'No matching transaction' });
     }

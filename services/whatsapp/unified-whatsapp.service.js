@@ -193,8 +193,10 @@ class UnifiedWhatsAppService {
       templateId
     } = messageParams;
 
+    const originalRecipientNumber = recipientNumber;
+    let contact = null;
     if (contactId) {
-      const contact = await Contact.findById(contactId);
+      contact = await Contact.findById(contactId);
       if (contact) {
         if (contact.is_unsubscribed && !messageParams.ignoreUnsubscribe) {
           throw new Error('Contact has unsubscribed and cannot receive messages.');
@@ -203,12 +205,22 @@ class UnifiedWhatsAppService {
       }
     }
 
+    if (!contact && recipientNumber) {
+      contact = await Contact.findOne({
+        created_by: userId,
+        $or: [
+          { phone_number: recipientNumber },
+          { whatsapp_username: recipientNumber },
+          { whatsapp_bsuid: recipientNumber }
+        ]
+      }).lean();
+    }
+
     if (!whatsappPhoneNumber && whatsappPhoneNumberId) {
       whatsappPhoneNumber = await WhatsappPhoneNumber.findById(whatsappPhoneNumberId)
         .populate('waba_id')
         .lean();
     }
-
     if (replyType && replyId) {
       if (replyType === 'ReplyMaterial' || replyType === 'replymaterial' || ['text', 'media', 'image', 'video', 'audio', 'document', 'flow'].includes(replyType)) {
         const material = await ReplyMaterial.findById(replyId);
@@ -253,9 +265,12 @@ class UnifiedWhatsAppService {
 
     let templateComponents = templateComponentsInput || [];
     if (messageType === 'template' && templateName) {
+      const searchName = String(templateName).trim().toLowerCase();
       const template = messageParams.templateObj
-        || await Template.findOne({ template_name: templateName, user_id: userId, deleted_at: null }).lean()
-        || await Template.findOne({ template_name: templateName, deleted_at: null }).lean();
+        || await Template.findOne({ template_name: searchName, user_id: userId, deleted_at: null }).lean()
+        || await Template.findOne({ template_name: searchName, deleted_at: null }).lean()
+        || await Template.findOne({ template_name: { $regex: new RegExp('^' + templateName + '$', 'i') }, user_id: userId, deleted_at: null }).lean()
+        || await Template.findOne({ template_name: { $regex: new RegExp('^' + templateName + '$', 'i') }, deleted_at: null }).lean();
 
       if (template && !messageText) {
         messageText = template.message_body || `Template: ${template.template_name}`;
@@ -314,8 +329,71 @@ class UnifiedWhatsAppService {
           });
         }
 
-        if (templateVariables && Object.keys(templateVariables).length > 0) {
-          const bodyParams = Object.keys(templateVariables).map(key => ({
+        const expectedKeys = new Set();
+        if (template) {
+          if (Array.isArray(template.body_variables)) {
+            template.body_variables.forEach(v => {
+              if (v && v.key) expectedKeys.add(String(v.key));
+            });
+          }
+          if (template.message_body) {
+            const matches = [...template.message_body.matchAll(/\{\{(\d+)\}\}/g)];
+            matches.forEach(m => expectedKeys.add(m[1]));
+          }
+        }
+
+        let vars = {};
+        if (templateVariables) {
+          vars = templateVariables instanceof Map ? Object.fromEntries(templateVariables) : { ...templateVariables };
+        }
+
+        for (const key of expectedKeys) {
+          if (vars[key] === undefined || vars[key] === null || String(vars[key]).trim() === '') {
+            let resolved = '';
+            if (contact) {
+              const isNameKey = key === '1' || key.toLowerCase().includes('name');
+              if (isNameKey && contact.name) {
+                resolved = contact.name;
+              } else if (key in contact && contact[key] != null) {
+                resolved = String(contact[key]);
+              } else if (contact.custom_fields) {
+                const cf = contact.custom_fields;
+                const val = typeof cf.get === 'function' ? cf.get(key) : cf[key];
+                if (val != null) resolved = String(val);
+              }
+            }
+
+            if (!resolved || resolved.trim() === '') {
+              if (template && Array.isArray(template.body_variables)) {
+                const bodyVar = template.body_variables.find(v => String(v.key) === key);
+                if (bodyVar && bodyVar.example) {
+                  resolved = bodyVar.example;
+                }
+              }
+            }
+
+            if (!resolved || resolved.trim() === '') {
+              const isNameKey = key === '1' || key.toLowerCase().includes('name');
+              resolved = isNameKey ? 'Customer' : 'N/A';
+            }
+
+            vars[key] = resolved;
+          }
+        }
+
+        templateVariables = vars;
+
+        if (Object.keys(templateVariables).length > 0) {
+          const sortedKeys = Object.keys(templateVariables).sort((a, b) => {
+            const numA = parseInt(a, 10);
+            const numB = parseInt(b, 10);
+            if (!isNaN(numA) && !isNaN(numB)) {
+              return numA - numB;
+            }
+            return a.localeCompare(b);
+          });
+
+          const bodyParams = sortedKeys.map(key => ({
             type: 'text',
             text: String(templateVariables[key]),
             parameter_name: key
@@ -505,17 +583,67 @@ class UnifiedWhatsAppService {
 
 
       if (!messageParams.templateId && templateName) {
+        const searchName = String(templateName).trim().toLowerCase();
         const templateForId = messageParams.templateObj
-          || await Template.findOne({ template_name: templateName, user_id: userId, deleted_at: null }).lean()
-          || await Template.findOne({ template_name: templateName, deleted_at: null }).lean();
+          || await Template.findOne({ template_name: searchName, user_id: userId, deleted_at: null }).lean()
+          || await Template.findOne({ template_name: searchName, deleted_at: null }).lean()
+          || await Template.findOne({ template_name: { $regex: new RegExp('^' + templateName + '$', 'i') }, user_id: userId, deleted_at: null }).lean()
+          || await Template.findOne({ template_name: { $regex: new RegExp('^' + templateName + '$', 'i') }, deleted_at: null }).lean();
         if (templateForId) {
           messageParams.templateId = templateForId._id;
         }
       }
+
+      // Authentication templates DO NOT support BSUIDs. We must force the use of the phone number.
+      const resolvedTemplate = messageParams.templateObj || template;
+      const isAuthenticationTemplate = resolvedTemplate && resolvedTemplate.category && resolvedTemplate.category.toUpperCase() === 'AUTHENTICATION';
+      if (isAuthenticationTemplate) {
+        const phoneCandidate = contact?.phone_number || originalRecipientNumber;
+        const isBsuid = /^[A-Z]{2}\.\d+$/.test(String(phoneCandidate).trim());
+        if (phoneCandidate && !isBsuid) {
+          recipientNumber = phoneCandidate;
+          console.log(`[UnifiedService] Routing authentication template to phone number: ${recipientNumber} (BSUID bypassed)`);
+        } else {
+          throw new Error('Authentication templates require a phone number recipient, but only a BSUID was provided.');
+        }
+      }
+    }
+
+    // Distinguish system-generated fallbacks (where messageText is undefined/null) from intentional/genuine empty content (empty string or only whitespace)
+    let validatedMessageText = messageText;
+    const isTextOrUndefined = !messageType || messageType === 'text';
+    const isInteractive = messageType === 'interactive';
+
+    if (isTextOrUndefined) {
+      if (messageText === undefined || messageText === null) {
+        // Check if there is a template name/id or active media to determine if it is a system-generated text message
+        const hasMedia = mediaUrl || messageParams.file;
+        const hasTemplate = templateName || templateId || messageParams.templateId;
+        if (!hasMedia && !hasTemplate) {
+          throw new Error('Message text content is empty and cannot be dispatched.');
+        }
+      } else if (typeof messageText === 'string' && !messageText.trim()) {
+        // Intentional empty text message content - abort dispatching to prevent sending empty replies
+        throw new Error('Intentional empty text message content. Dispatch aborted.');
+      }
+    } else if (isInteractive) {
+      if (messageText === undefined || messageText === null) {
+        // System-generated fallback for interactive messages when body is omitted
+        if (messageParams.interactiveType === 'flow') {
+          validatedMessageText = 'Please fill out the form:';
+        } else if (messageParams.interactiveType === 'cta_url') {
+          validatedMessageText = 'Please click the link below:';
+        } else {
+          validatedMessageText = 'Please select an option:';
+        }
+      } else if (typeof messageText === 'string' && !messageText.trim()) {
+        // Intentional empty interactive body - abort dispatching since interactive body text is required by Meta
+        throw new Error('Interactive message body is empty. Dispatch aborted.');
+      }
     }
 
     messageParams.recipientNumber = recipientNumber;
-    messageParams.messageText = messageText;
+    messageParams.messageText = validatedMessageText;
     messageParams.messageType = messageType;
     messageParams.templateName = templateName;
     messageParams.templateComponents = templateComponents;
@@ -767,13 +895,9 @@ class UnifiedWhatsAppService {
     const enrichedConnections = await Promise.all(
       connections.map(async (conn) => {
         let verified_name = null;
-        let quality_rating = null;
-        console.log("conn.phone_number_id", conn.phone_number_id)
-        console.log("conn.access_token", conn.access_token)
-
         try {
           const response = await axios.get(
-            `https://graph.facebook.com/v19.0/${conn.phone_number_id}`,
+            `https://graph.facebook.com/${process.env.WHATSAPP_API_VERSION || 'v19.0'}/${conn.phone_number_id}`,
             {
               params: {
                 fields: 'verified_name,quality_rating'
@@ -783,8 +907,8 @@ class UnifiedWhatsAppService {
               }
             }
           );
-          verified_name = response.data.verified_name;
-          quality_rating = response.data.quality_rating;
+          verified_name = response.data?.verified_name || null;
+          quality_rating = response.data?.quality_rating || null;
         } catch (err) {
           console.error(
             `Failed to fetch WhatsApp details for ${conn.phone_number_id}`,

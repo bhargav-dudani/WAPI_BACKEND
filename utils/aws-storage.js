@@ -154,4 +154,50 @@ class AWSStorage {
 export const deleteFile = AWSStorage.deleteFile;
 export { AWSStorage };
 
+
+function extractFileUrls(obj) {
+  const urls = new Set();
+  
+  function traverse(item) {
+    if (!item) return;
+    if (typeof item === 'string') {
+      if (item.startsWith('/uploads/') || item.includes('.amazonaws.com/')) {
+        urls.add(item);
+      }
+    } else if (Array.isArray(item)) {
+      item.forEach(traverse);
+    } else if (typeof item === 'object') {
+      Object.keys(item).forEach(key => {
+        if (key.startsWith('$') || key === '_id' || key === '__v') return;
+        traverse(item[key]);
+      });
+    }
+  }
+  
+  traverse(obj);
+  return urls;
+}
+
+export async function deleteOrphanFiles(oldObj, newObj) {
+  try {
+    const oldUrls = extractFileUrls(oldObj);
+    const newUrls = extractFileUrls(newObj);
+    
+    for (const url of oldUrls) {
+      if (!newUrls.has(url)) {
+        if (url.includes('/uploads/landing/1000x550.svg') || 
+            url.includes('/uploads/landing/250x250.svg') ||
+            url.includes('/uploads/landing/450x300.svg') ||
+            url.includes('/uploads/landing/950x550.svg')) {
+          continue;
+        }
+        console.log(`Deleting replaced/orphaned image: ${url}`);
+        await deleteFile(url);
+      }
+    }
+  } catch (error) {
+    console.error('Error deleting orphan files:', error);
+  }
+}
+
 export default AWSStorage;

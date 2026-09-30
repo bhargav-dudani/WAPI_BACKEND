@@ -122,7 +122,7 @@ class AppointmentService {
       start_time: startTime,
       end_time: endTime,
       answers,
-      status: 'booked',
+      status: config.send_confirmation_message === false ? 'confirmed' : 'pending',
       payment_status: config.pre_paid_fees > 0 ? 'partially_paid' : 'unpaid',
       amount_due: amountDuePaise
     });
@@ -198,7 +198,7 @@ class AppointmentService {
       }
     }
 
-    if (config.success_template_id) {
+    if (config.success_template_id && config.send_confirmation_message === false) {
        this.sendAppointmentTemplate(
          userId,
          contactId,
@@ -517,12 +517,51 @@ class AppointmentService {
         }
 
         const { default: unifiedWhatsAppService } = await import('./whatsapp/unified-whatsapp.service.js');
-        await unifiedWhatsAppService.sendMessage(userId, {
-          recipientNumber: contact.phone_number,
-          messageType: 'text',
-          messageText: messageContent,
-          whatsappPhoneNumberId
-        });
+        const options = nextQuestion.options || [];
+        const qType = (nextQuestion.type || '').toLowerCase();
+        
+        if ((qType === 'select' || qType === 'dropdown') && options.length > 0) {
+          if (options.length <= 3) {
+            const buttonParams = options.map((opt, i) => ({
+              id: opt,
+              title: opt.length > 20 ? opt.substring(0, 17) + '...' : opt
+            }));
+            await unifiedWhatsAppService.sendMessage(userId, {
+              recipientNumber: contact.phone_number,
+              messageType: 'interactive',
+              interactiveType: 'button',
+              messageText: messageContent,
+              buttonParams,
+              whatsappPhoneNumberId
+            });
+          } else {
+            const items = options.slice(0, 10).map((opt, i) => ({
+              id: opt,
+              title: opt.length > 24 ? opt.substring(0, 21) + '...' : opt,
+              description: ''
+            }));
+            await unifiedWhatsAppService.sendMessage(userId, {
+              recipientNumber: contact.phone_number,
+              messageType: 'interactive',
+              interactiveType: 'list',
+              messageText: messageContent,
+              listParams: {
+                header: nextQuestion.label,
+                buttonTitle: 'Select Option',
+                sectionTitle: 'Options',
+                items
+              },
+              whatsappPhoneNumberId
+            });
+          }
+        } else {
+          await unifiedWhatsAppService.sendMessage(userId, {
+            recipientNumber: contact.phone_number,
+            messageType: 'text',
+            messageText: messageContent,
+            whatsappPhoneNumberId
+          });
+        }
         return { status: 'question_sent' };
       }
 

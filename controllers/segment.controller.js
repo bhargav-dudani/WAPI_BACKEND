@@ -9,7 +9,7 @@ const SORT_ORDER = {
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 10;
-const MAX_LIMIT = 100;
+const MAX_LIMIT = 10000;
 const DEFAULT_SORT_FIELD = 'sort_order';
 const ALLOWED_SORT_FIELDS = ['name', 'description', 'member_count', 'created_at', 'updated_at'];
 
@@ -52,7 +52,16 @@ const buildSearchQuery = (searchTerm) => {
 export const getSegments = async (req, res) => {
   try {
     const userId = req.user.owner_id;
-    const { page, limit, skip } = parsePaginationParams(req.query);
+    const { page = 1, limit } = req.query;
+
+    let parsedLimit = (limit === 'all' || limit === undefined) ? 0 : parseInt(limit);
+    if (isNaN(parsedLimit)) parsedLimit = 10;
+
+    let parsedPage = parseInt(page);
+    if (isNaN(parsedPage) || parsedPage < 1) parsedPage = 1;
+
+    const skip = parsedLimit === 0 ? 0 : (parsedPage - 1) * parsedLimit;
+
     const { sortField, sortOrder } = parseSortParams(req.query);
     const searchQuery = buildSearchQuery(req.query.search);
 
@@ -64,7 +73,7 @@ export const getSegments = async (req, res) => {
 
     const segments = await Segment.find(query)
       .skip(skip)
-      .limit(parseInt(limit))
+      .limit(parsedLimit)
       .sort({ [sortField]: sortOrder });
 
     const total = await Segment.countDocuments(query);
@@ -74,10 +83,10 @@ export const getSegments = async (req, res) => {
       data: {
         segments,
         pagination: {
-          currentPage: page,
-          totalSegments: Math.ceil(total / limit),
+          currentPage: parsedPage,
+          totalSegments: parsedLimit === 0 ? 1 : Math.ceil(total / parsedLimit),
           totalItems: total,
-          itemsPerPage: limit
+          itemsPerPage: parsedLimit === 0 ? total : parsedLimit
         }
       }
     });
